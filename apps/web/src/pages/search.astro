@@ -1,0 +1,159 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleList from "../components/ArticleList.astro";
+import LoadMore from "../components/LoadMore.astro";
+import { getArticles } from "../lib/api";
+
+const q = (Astro.url.searchParams.get("q") ?? "").trim();
+
+let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
+let error: string | null = null;
+
+if (q) {
+	try {
+		articles = await getArticles({ q });
+	} catch (e) {
+		error = e instanceof Error ? e.message : "검색에 실패했습니다";
+	}
+}
+---
+
+<BaseLayout
+	title={q ? `'${q}' 검색 - 단숨` : "검색 - 단숨"}
+	description="단숨에서 경제 뉴스를 검색하세요"
+>
+	<section class="py-2">
+		<!-- 글래스 검색바 -->
+		<form action="/search" method="get" class="mb-6">
+			<div class="glass rounded-2xl flex items-center gap-3 px-4 py-3 transition-shadow focus-within:ring-2 focus-within:ring-brand/40">
+				<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<circle cx="11" cy="11" r="7" />
+					<path stroke-linecap="round" d="M21 21l-4.3-4.3" />
+				</svg>
+				<input
+					id="search-input"
+					type="search"
+					name="q"
+					value={q}
+					placeholder="키워드로 기사 검색"
+					autocomplete="off"
+					autofocus
+					class="w-full bg-transparent text-lg outline-none placeholder:text-text-secondary"
+				/>
+			</div>
+		</form>
+
+		{!q ? (
+			<>
+				<!-- 최근 검색(localStorage) — JS가 채움. 기록 없으면 폴백 문구 -->
+				<div id="recent-wrap" class="hidden">
+					<div class="flex items-center justify-between mb-3">
+						<h2 class="text-sm font-bold text-text-secondary">최근 검색</h2>
+						<button id="clear-recent" type="button" class="text-xs text-text-secondary hover:text-text transition-colors">
+							전체 삭제
+						</button>
+					</div>
+					<div id="recent-list" class="flex flex-wrap gap-2"></div>
+				</div>
+				<p id="recent-empty" class="py-12 text-center text-text-secondary">
+					검색어를 입력하세요
+				</p>
+			</>
+		) : error ? (
+			<p class="py-12 text-center text-text-secondary">{error}</p>
+		) : articles && articles.total > 0 ? (
+			<>
+				<p class="text-sm text-text-secondary mb-3">
+					<span class="font-bold text-text">'{q}'</span> 검색 결과 {articles.total}건
+				</p>
+				<ArticleList articles={articles.items} />
+				<LoadMore hasMore={articles.hasMore} query={q} />
+			</>
+		) : (
+			<p class="py-12 text-center text-text-secondary">
+				<span class="font-bold text-text">'{q}'</span>에 대한 검색 결과가 없습니다
+			</p>
+		)}
+	</section>
+</BaseLayout>
+
+<script>
+	// 최근 검색 기록(localStorage). 인증 없이 같은 브라우저에서 유지.
+	const STORE_KEY = "dansum:recent-searches";
+	const MAX = 8;
+
+	function read(): string[] {
+		try {
+			const v = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+			return Array.isArray(v) ? v.filter((t) => typeof t === "string") : [];
+		} catch {
+			return [];
+		}
+	}
+	function write(arr: string[]) {
+		try {
+			localStorage.setItem(STORE_KEY, JSON.stringify(arr.slice(0, MAX)));
+		} catch {}
+	}
+	function addTerm(term: string) {
+		const t = term.trim();
+		if (!t) return;
+		write([t, ...read().filter((x) => x !== t)]);
+	}
+
+	function setupSearch() {
+		// 현재 검색어 저장(결과 페이지 진입 시)
+		const q = (new URLSearchParams(location.search).get("q") || "").trim();
+		if (q) addTerm(q);
+
+		// 최근 검색 렌더는 검색어가 없는 랜딩 페이지에만(컨테이너 존재 시)
+		const wrap = document.getElementById("recent-wrap");
+		const list = document.getElementById("recent-list");
+		const empty = document.getElementById("recent-empty");
+		if (!wrap || !list) return;
+
+		const render = () => {
+			const items = read();
+			list.innerHTML = "";
+			if (items.length === 0) {
+				wrap.classList.add("hidden");
+				empty?.classList.remove("hidden");
+				return;
+			}
+			wrap.classList.remove("hidden");
+			empty?.classList.add("hidden");
+			for (const term of items) {
+				const chip = document.createElement("span");
+				chip.className =
+					"inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/60 pl-3 pr-1.5 py-1 text-sm transition-colors hover:border-brand";
+				const a = document.createElement("a");
+				a.href = `/search?q=${encodeURIComponent(term)}`;
+				a.textContent = term;
+				a.className = "text-text hover:text-brand transition-colors";
+				const del = document.createElement("button");
+				del.type = "button";
+				del.setAttribute("aria-label", `${term} 삭제`);
+				del.className =
+					"w-5 h-5 flex items-center justify-center rounded-full text-text-secondary hover:text-text hover:bg-surface-alt leading-none";
+				del.textContent = "×";
+				del.addEventListener("click", () => {
+					write(read().filter((x) => x !== term));
+					render();
+				});
+				chip.append(a, del);
+				list.appendChild(chip);
+			}
+		};
+		render();
+
+		document.getElementById("clear-recent")?.addEventListener("click", () => {
+			write([]);
+			render();
+		});
+
+		// 빈 검색 랜딩에서는 입력에 포커스(SPA 전환 시 autofocus 보강)
+		(document.getElementById("search-input") as HTMLInputElement | null)?.focus();
+	}
+
+	document.addEventListener("astro:page-load", setupSearch);
+</script>

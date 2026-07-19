@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleList from "../components/ArticleList.astro";
+import TopNews from "../components/TopNews.astro";
+import LoadMore from "../components/LoadMore.astro";
+import { getArticles, getTopClusters } from "../lib/api";
+
+let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
+let clusters: Awaited<ReturnType<typeof getTopClusters>> = [];
+let error: string | null = null;
+
+try {
+	[articles, clusters] = await Promise.all([
+		getArticles(),
+		getTopClusters(6),
+	]);
+} catch (e) {
+	error = e instanceof Error ? e.message : "Failed to load articles";
+}
+---
+
+<BaseLayout>
+	{error ? (
+		<div class="py-12 text-center">
+			<p class="text-text-secondary">{error}</p>
+		</div>
+	) : (
+		<>
+			<TopNews clusters={clusters} />
+
+			<section>
+				<div class="mb-2 pt-6 border-t border-border">
+					<h2 class="text-2xl font-extrabold tracking-tight">최신 뉴스</h2>
+					<p class="text-sm text-text-secondary mt-1">
+						AI가 요약한 경제 뉴스를 최신순으로 확인하세요
+					</p>
+				</div>
+
+				{articles ? <ArticleList articles={articles.items} /> : null}
+
+				<LoadMore hasMore={articles?.hasMore ?? false} />
+			</section>
+		</>
+	)}
+</BaseLayout>

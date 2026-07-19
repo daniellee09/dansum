@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.wrangler/
+.wrangler-state/
+.dev.vars
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+.astro/
+.dry-run/
+
+# local D1 dumps / seeds (may be large; regenerate with scripts/export-seed.mjs)
+seed-data.sql
+seed*.sql
+*.sqlite
+*.sqlite3

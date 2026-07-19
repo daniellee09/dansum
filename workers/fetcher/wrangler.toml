@@ -1,0 +1,22 @@
+name = "dansum-fetcher"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dansum-db"
+database_id = "39f86003-828b-4be8-b020-fa88bd846974"
+
+[[queues.consumers]]
+queue = "dansum-fetch"
+max_batch_size = 3
+max_batch_timeout = 30
+
+[[queues.producers]]
+queue = "dansum-summarize"
+binding = "SUMMARIZE_QUEUE"
+
+[vars]
+MAX_HTML_BYTES = "800000"
+MAX_CONTENT_CHARS = "8000"

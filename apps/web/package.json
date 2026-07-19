@@ -1,0 +1,18 @@
+{
+  "name": "@dansum/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.0.0",
+    "@dansum/shared": "workspace:*",
+    "@tailwindcss/vite": "^4.3.1",
+    "astro": "^5.9.0",
+    "tailwindcss": "^4.0.0"
+  }
+}

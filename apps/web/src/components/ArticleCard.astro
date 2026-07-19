@@ -1,0 +1,36 @@
+---
+import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
+import type { Article, Category } from "@dansum/shared";
+
+interface Props {
+	article: Article;
+}
+
+const { article } = Astro.props;
+---
+
+<article class="group h-full flex flex-col rounded-2xl border border-border bg-surface/60 backdrop-blur-sm p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(2,6,23,0.07)]">
+	<!-- 메타 정보 (카테고리는 별도 링크라 본문 앵커 밖에 둠) -->
+	<div class="flex items-center gap-2 mb-1.5 text-xs">
+		<a
+			href={`/category/${article.category}`}
+			class="font-semibold text-accent hover:underline"
+		>
+			{CATEGORY_LABELS[article.category as Category] ?? article.category}
+		</a>
+		<span class="font-medium text-text-secondary">{article.sourceName}</span>
+		<span class="text-text-secondary">{formatRelativeTime(article.publishedAt)}</span>
+	</div>
+
+	<a href={`/article/${article.id}`} class="block read-link">
+		<!-- 제목 - 타이포그래피 핵심 -->
+		<h2 class="text-lg font-bold leading-snug tracking-tight mb-1 group-hover:text-brand transition-colors">
+			{article.title}
+		</h2>
+
+		<!-- 요약 (2줄로 축약, 상세 페이지에서 전문·핵심포인트 확인) -->
+		<p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
+			{article.summary}
+		</p>
+	</a>
+</article>

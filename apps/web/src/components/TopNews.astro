@@ -1,0 +1,96 @@
+---
+import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
+import type { Category, NewsCluster } from "@dansum/shared";
+
+interface Props {
+	clusters: NewsCluster[];
+}
+
+const { clusters } = Astro.props;
+---
+
+{clusters.length > 0 && (
+	<section class="glass rounded-2xl p-5 sm:p-6 mb-10">
+		<!-- 섹션 헤더 -->
+		<div class="mb-5">
+			<h2 class="text-2xl font-extrabold tracking-tight">오늘의 주요 뉴스</h2>
+			<p class="text-xs text-text-secondary mt-1">여러 매체가 함께 보도한 이슈</p>
+		</div>
+
+		<ol class="divide-y divide-border">
+			{clusters.map((cluster, i) => {
+				const a = cluster.lead;
+				const rc = cluster.rankChange;
+				const isNew = rc === null;
+				const isUp = rc !== null && rc > 0;
+				const isDown = rc !== null && rc < 0;
+				const isSurge = rc !== null && rc >= 3; // 3계단 이상 상승 = 급상승
+
+				return (
+					<li class="group -mx-3 px-3 py-4 rounded-xl transition-colors duration-150 hover:bg-surface-alt">
+						<a href={`/article/${a.id}`} class="flex gap-4 items-start read-link">
+
+							<!-- 순위 번호 + 변동 표시 -->
+							<div class="flex flex-col items-center w-8 shrink-0 pt-0.5 gap-0.5">
+								<span class="text-2xl font-extrabold text-text tabular-nums leading-none">
+									{i + 1}
+								</span>
+								{isNew && (
+									<span class="text-[10px] font-bold text-hot leading-none tracking-tight">
+										NEW
+									</span>
+								)}
+								{isUp && (
+									<span class="text-[10px] font-bold text-hot leading-none">
+										▲{rc}
+									</span>
+								)}
+								{isDown && (
+									<span class="text-[10px] font-bold text-text-secondary leading-none">
+										▼{Math.abs(rc as number)}
+									</span>
+								)}
+								{rc === 0 && (
+									<span class="text-[10px] text-text-secondary leading-none">
+										-
+									</span>
+								)}
+							</div>
+
+							<!-- 기사 내용 -->
+							<div class="min-w-0 flex-1">
+								<div class="flex items-center gap-2 mb-1.5 flex-wrap">
+									{(isSurge || isNew) && (
+										<span class="text-xs font-semibold text-hot bg-hot/15 px-2 py-0.5 rounded-full">
+											{isNew ? "NEW" : `🔥 급상승 ▲${rc}`}
+										</span>
+									)}
+									<span class="text-xs font-semibold text-text-secondary">
+										{CATEGORY_LABELS[a.category as Category] ?? a.category}
+									</span>
+									<span class="text-xs text-text-secondary">
+										{formatRelativeTime(a.publishedAt)}
+									</span>
+								</div>
+
+								<h3 class="text-lg font-bold leading-snug tracking-tight group-hover:text-hot transition-colors">
+									{a.title}
+								</h3>
+
+								<p class="text-sm text-text-secondary mt-1 line-clamp-2">
+									{a.summary}
+								</p>
+
+								{cluster.coverage > 1 && (
+									<p class="text-xs text-text-secondary mt-1.5 truncate">
+										{cluster.sourceNames.join(" · ")}
+									</p>
+								)}
+							</div>
+						</a>
+					</li>
+				);
+			})}
+		</ol>
+	</section>
+)}

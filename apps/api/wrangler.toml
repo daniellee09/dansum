@@ -1,0 +1,12 @@
+name = "dansum-api"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dansum-db"
+database_id = "39f86003-828b-4be8-b020-fa88bd846974"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "8fa545469be9408caf7826af34fdefdb"

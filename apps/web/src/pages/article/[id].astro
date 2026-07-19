@@ -1,0 +1,201 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getArticle, getRelatedArticles } from "../../lib/api";
+import { CATEGORY_LABELS, formatKoreanDate, formatRelativeTime } from "@dansum/shared";
+import type { Article, Category } from "@dansum/shared";
+
+const { id } = Astro.params;
+
+if (!id) return Astro.redirect("/");
+
+let article: Awaited<ReturnType<typeof getArticle>> | null = null;
+let related: Article[] = [];
+let error: string | null = null;
+
+try {
+	article = await getArticle(id);
+	// 관련 보도는 실패해도 본문 렌더는 유지
+	related = await getRelatedArticles(id).catch(() => []);
+} catch (e) {
+	error = e instanceof Error ? e.message : "Failed to load article";
+}
+
+if (!article && !error) return Astro.redirect("/");
+---
+
+<BaseLayout
+	type="article"
+	title={article ? `${article.title} - 단숨` : "기사를 찾을 수 없습니다"}
+	description={article?.summary}
+>
+	{error || !article ? (
+		<div class="py-20 text-center">
+			<p class="text-lg text-text-secondary">기사를 찾을 수 없습니다</p>
+			<a href="/" class="text-brand text-sm mt-2 inline-block hover:underline">
+				홈으로 돌아가기
+			</a>
+		</div>
+	) : (
+		<article class="py-4">
+			<!-- 메타 -->
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 text-sm">
+				<a
+					href={`/category/${article.category}`}
+					class="font-semibold text-accent hover:underline"
+				>
+					{CATEGORY_LABELS[article.category as Category] ?? article.category}
+				</a>
+				<span class="text-text-secondary">&middot;</span>
+				<span class="font-medium text-text-secondary">{article.sourceName}</span>
+				<span class="text-text-secondary">&middot;</span>
+				<span class="text-text-secondary">
+					{formatKoreanDate(article.publishedAt)}
+				</span>
+				<span class="text-text-secondary">&middot;</span>
+				<a
+					href={article.sourceUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="font-medium text-brand hover:underline"
+				>
+					원문 &nearr;
+				</a>
+			</div>
+
+			<!-- 제목 -->
+			<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-6">
+				{article.title}
+			</h1>
+
+			{article.originalTitle && article.originalTitle !== article.title && (
+				<p class="text-sm text-text-secondary mb-6 italic">
+					원문: {article.originalTitle}
+				</p>
+			)}
+
+			<!-- 요약: 신문 리드 문단처럼 왼쪽 강조선 + 넉넉한 행간으로 격상 -->
+			<div class="border-l-4 border-brand bg-surface/60 backdrop-blur-md rounded-r-2xl shadow-[0_8px_30px_rgba(2,6,23,0.05)] pl-5 pr-5 py-5 mb-8">
+				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+					요약
+				</h2>
+				<p class="text-lg leading-loose">
+					{article.summary}
+				</p>
+			</div>
+
+			<!-- 주요 내용(구조화 정리: 소제목 + 불릿) -->
+			{(article.sections ?? []).length > 0 && (
+				<div class="mb-8">
+					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+						주요 내용
+					</h2>
+					<div class="space-y-5">
+						{article.sections.map((s) => (
+							<div>
+								<h3 class="text-base font-bold mb-2">{s.heading}</h3>
+								<ul class="space-y-2">
+									{s.points.map((p) => (
+										<li class="flex items-start gap-3">
+											<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
+											<span class="text-base leading-relaxed">{p}</span>
+										</li>
+									))}
+								</ul>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+
+			<!-- 핵심 포인트 -->
+			<div class="mb-8">
+				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+					핵심 포인트
+				</h2>
+				<ul class="space-y-3">
+					{article.keyPoints.map((point) => (
+						<li class="flex items-start gap-3">
+							<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
+							<span class="text-base leading-relaxed">{point}</span>
+						</li>
+					))}
+				</ul>
+			</div>
+
+			<!-- 키워드 -->
+			{article.keywords.length > 0 && (
+				<div class="flex flex-wrap gap-2 mb-8">
+					{article.keywords.map((kw) => (
+						<span class="text-xs text-text-secondary bg-surface-alt px-2 py-1 rounded-full">
+							#{kw}
+						</span>
+					))}
+				</div>
+			)}
+
+			<!-- 관련 보도(같은 이슈 다른 매체) -->
+			{related.length > 0 && (
+				<div class="mb-8 pt-6 border-t border-border">
+					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+						관련 보도 {related.length}건
+					</h2>
+					<ul class="divide-y divide-border">
+						{related.map((r) => (
+							<li>
+								<a href={`/article/${r.id}`} class="block py-3 group read-link">
+									<div class="flex items-center gap-2 mb-1 text-xs text-text-secondary">
+										<span class="font-semibold text-accent">{r.sourceName}</span>
+										<span>{formatRelativeTime(r.publishedAt)}</span>
+									</div>
+									<p class="text-base font-semibold leading-snug group-hover:text-brand transition-colors">
+										{r.title}
+									</p>
+								</a>
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
+
+			<!-- 하단 액션: 목록으로(좌) · 원문 보기(우) 한 줄 정렬 -->
+			<div class="flex items-center justify-between pt-6 border-t border-border">
+				<a
+					id="back-to-list"
+					href={`/category/${article.category}`}
+					class="text-sm font-medium text-text-secondary hover:text-text transition-colors"
+				>
+					&larr; 목록으로
+				</a>
+				<a
+					href={article.sourceUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-sm font-medium text-brand hover:underline"
+				>
+					원문 보기 &rarr;
+				</a>
+			</div>
+		</article>
+	)}
+</BaseLayout>
+
+<script>
+	// "목록으로": 같은 사이트 안에서 들어왔으면 이전 목록(홈/주요뉴스·카테고리)으로
+	// 되돌아간다(스크롤 위치 보존). 직접 접속 등 기록이 없으면 href 폴백.
+	// View Transitions로 본문이 교체되므로 매 page-load마다 재바인딩한다.
+	function setupBackToList() {
+		const back = document.getElementById("back-to-list");
+		if (!back) return;
+		const ref = document.referrer;
+		const sameOrigin = ref && new URL(ref).origin === location.origin;
+		const cameFromArticle = sameOrigin && new URL(ref).pathname.startsWith("/article/");
+		if (sameOrigin && !cameFromArticle) {
+			back.addEventListener("click", (e) => {
+				e.preventDefault();
+				history.back();
+			});
+		}
+	}
+
+	document.addEventListener("astro:page-load", setupBackToList);
+</script>

@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/* dark: 유틸리티를 OS 설정이 아닌 .dark 클래스 토글에 연동 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+	--color-primary: #1a1a2e;
+	--color-accent: #374151;
+	/* 소프트 블루 포인트(앰비언트/글래스 분위기와 조화) */
+	--color-brand: #4f7ef7;
+	/* "급상승/NEW" 강조용 소프트 코랄(쨍한 빨강 대신 톤다운, iOS식 틴트 캡슐) */
+	--color-hot: #ef6147;
+	--color-surface: #ffffff;
+	--color-surface-alt: #f8f9fa;
+	--color-text: #1a1a2e;
+	--color-text-secondary: #6b7280;
+	--color-border: #e5e7eb;
+
+	--font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+}
+
+html {
+	font-family: var(--font-sans);
+	color: var(--color-text);
+	background-color: var(--color-surface);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* 다크 모드: 완전한 검정 대신 약간 짙은 회색 */
+html.dark {
+	--color-primary: #f1f5f9;
+	--color-accent: #94a3b8;
+	/* 어두운 배경 대비 위해 밝은 소프트 블루 */
+	--color-brand: #8ab4ff;
+	/* 어두운 배경용 밝은 코랄 */
+	--color-hot: #ff9d88;
+	--color-surface: #1e2024;
+	--color-surface-alt: #282b30;
+	--color-text: #f1f5f9;
+	--color-text-secondary: #9ca3af;
+	--color-border: #383b41;
+}
+
+/* 드래그 선택색을 브랜드색으로(은은하게) */
+::selection {
+	background-color: color-mix(in oklab, var(--color-brand) 24%, transparent);
+}
+
+/* 키보드 포커스 링(마우스 클릭에는 안 뜸) */
+:focus-visible {
+	outline: 2px solid var(--color-brand);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+/* 앰비언트 배경: 옅은 블루-라벤더 워시 + 흐릿한 컬러 오브(고정, 콘텐츠 뒤). 텍스트 영역은 거의 흰색 유지 */
+.ambient {
+	position: fixed;
+	inset: 0;
+	z-index: -10;
+	pointer-events: none;
+	background:
+		radial-gradient(42rem 30rem at 10% -6%, color-mix(in oklab, #6366f1 13%, transparent), transparent 60%),
+		radial-gradient(38rem 26rem at 104% 6%, color-mix(in oklab, #38bdf8 13%, transparent), transparent 60%),
+		radial-gradient(42rem 30rem at 50% 116%, color-mix(in oklab, #a78bfa 11%, transparent), transparent 60%),
+		linear-gradient(180deg, #f4f6ff 0%, #ffffff 42%);
+}
+
+html.dark .ambient {
+	background:
+		radial-gradient(42rem 30rem at 10% -6%, color-mix(in oklab, #6366f1 24%, transparent), transparent 60%),
+		radial-gradient(38rem 26rem at 104% 6%, color-mix(in oklab, #22d3ee 16%, transparent), transparent 60%),
+		radial-gradient(42rem 30rem at 50% 116%, color-mix(in oklab, #a78bfa 16%, transparent), transparent 60%),
+		linear-gradient(180deg, #181a20 0%, #1e2024 42%);
+}
+
+/* 글래스모피즘 표면: 반투명 + 블러 + 옅은 테두리 + 소프트 그림자 (프레임된 표면에만 선별 적용) */
+.glass {
+	background-color: color-mix(in oklab, var(--color-surface) 68%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid color-mix(in oklab, #ffffff 55%, transparent);
+	box-shadow: 0 10px 34px rgba(2, 6, 23, 0.06);
+}
+
+html.dark .glass {
+	border-color: color-mix(in oklab, #ffffff 10%, transparent);
+	box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+}
+
+/* 활성 네비 칩: 뒤 배경이 비치는 단순 투명 버튼(프로스티드 + 테두리만).
+   하이라이트·inset·드롭그림자 없음 — 블러로 배경을 비추고 테두리로 선택 상태를 정의. */
+.nav-glass {
+	background-color: color-mix(in oklab, var(--color-surface) 30%, transparent);
+	backdrop-filter: blur(8px) saturate(140%);
+	-webkit-backdrop-filter: blur(8px) saturate(140%);
+	border: 1px solid var(--color-border);
+}
+
+html.dark .nav-glass {
+	background-color: color-mix(in oklab, #ffffff 8%, transparent);
+	border-color: color-mix(in oklab, #ffffff 16%, transparent);
+}
+
+/* 다크모드 토글 시에만 일시적으로 색 전환을 부드럽게(초기 로드·호버엔 영향 없음) */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+	transition:
+		background-color 0.3s ease,
+		border-color 0.3s ease,
+		color 0.3s ease !important;
+}
+
+/* 제목 줄바꿈을 균형 있게 나눠 외톨이 단어 방지 */
+h1, h2, h3 {
+	text-wrap: balance;
+}
+
+/* 이미 방문한 기사: 제목을 톤다운해 "읽음" 표시.
+   메타·요약·순위는 각자 색을 명시해 영향 없고, 색을 지정 않은 제목만 상속으로 흐려진다.
+   (:visited는 프라이버시상 색상 계열만 바뀌고 JS로는 읽을 수 없음) */
+a.read-link:visited,
+a.read-link:visited :is(h2, h3, p) {
+	color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.theme-transition,
+	.theme-transition *,
+	.theme-transition *::before,
+	.theme-transition *::after {
+		transition: none !important;
+	}
+}
+
+/* DANSUM 로고: 글자별 staggered fade-up (GPU 가속) */
+.dansum-letter {
+	display: inline-block;
+	opacity: 0;
+	transform: translateY(0.3em);
+	animation: dansum-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+	will-change: transform, opacity;
+}
+
+@keyframes dansum-rise {
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dansum-letter {
+		opacity: 1;
+		transform: none;
+		animation: none;
+	}
+}
+
+/* 타이포그래피 최적화 */
+body {
+	line-height: 1.7;
+	letter-spacing: -0.01em;
+	word-break: keep-all;
+	overflow-wrap: break-word;
+}

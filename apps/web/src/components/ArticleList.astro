@@ -1,0 +1,23 @@
+---
+import type { Article } from "@dansum/shared";
+import ArticleCard from "./ArticleCard.astro";
+
+interface Props {
+	articles: Article[];
+}
+
+const { articles } = Astro.props;
+---
+
+{articles.length > 0 ? (
+	<div id="article-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+		{articles.map((article) => (
+			<ArticleCard article={article} />
+		))}
+	</div>
+) : (
+	<div class="py-20 text-center">
+		<p class="text-lg text-text-secondary">아직 뉴스가 없습니다</p>
+		<p class="text-sm text-text-secondary mt-1">곧 새로운 소식이 업데이트됩니다</p>
+	</div>
+)}

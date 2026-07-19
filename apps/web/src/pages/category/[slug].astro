@@ -1,0 +1,41 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleList from "../../components/ArticleList.astro";
+import LoadMore from "../../components/LoadMore.astro";
+import { getArticles } from "../../lib/api";
+import { CATEGORY_LABELS } from "@dansum/shared";
+import type { Category } from "@dansum/shared";
+
+const { slug } = Astro.params;
+
+if (!slug) return Astro.redirect("/");
+
+const categoryName = CATEGORY_LABELS[slug as Category] ?? slug;
+
+let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
+let error: string | null = null;
+
+try {
+	articles = await getArticles({ category: slug });
+} catch (e) {
+	error = e instanceof Error ? e.message : "Failed to load articles";
+}
+---
+
+<BaseLayout
+	title={`${categoryName} - 단숨`}
+	description={`${categoryName} 관련 최신 경제 뉴스 AI 요약`}
+>
+	<section>
+		{error ? (
+			<div class="py-12 text-center">
+				<p class="text-text-secondary">{error}</p>
+			</div>
+		) : articles ? (
+			<>
+				<ArticleList articles={articles.items} />
+				<LoadMore hasMore={articles.hasMore} category={slug} />
+			</>
+		) : null}
+	</section>
+</BaseLayout>

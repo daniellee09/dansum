@@ -1,0 +1,110 @@
+---
+interface Props {
+	hasMore: boolean;
+	/** 카테고리 페이지에서 필터를 유지하기 위한 slug. 홈에서는 비움 */
+	category?: string;
+	/** 검색 페이지에서 검색어를 유지하기 위한 q. 그 외에는 비움 */
+	query?: string;
+}
+
+const { hasMore, category, query } = Astro.props;
+---
+
+{hasMore && (
+	<div class="pt-6 text-center">
+		<button
+			id="load-more"
+			data-next-page="2"
+			data-category={category ?? ""}
+			data-query={query ?? ""}
+			class="px-5 py-2.5 text-sm font-semibold text-text border border-border rounded-xl hover:bg-surface-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+		>
+			더 보기
+		</button>
+	</div>
+)}
+
+<script>
+	import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
+	import type { Article } from "@dansum/shared";
+
+	const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+
+	function renderCard(a: Article): HTMLElement {
+		const article = document.createElement("article");
+		article.className =
+			"group h-full flex flex-col rounded-2xl border border-border bg-surface/60 backdrop-blur-sm p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(2,6,23,0.07)]";
+
+		// 메타: 카테고리는 별도 링크라 본문 앵커 밖에 둠
+		const meta = document.createElement("div");
+		meta.className = "flex items-center gap-2 mb-1.5 text-xs";
+		const cat = document.createElement("a");
+		cat.href = `/category/${a.category}`;
+		cat.className = "font-semibold text-accent hover:underline";
+		cat.textContent =
+			(CATEGORY_LABELS as Record<string, string>)[a.category] ?? a.category;
+		const src = document.createElement("span");
+		src.className = "font-medium text-text-secondary";
+		src.textContent = a.sourceName;
+		const time = document.createElement("span");
+		time.className = "text-text-secondary";
+		time.textContent = formatRelativeTime(a.publishedAt);
+		meta.append(cat, src, time);
+
+		const link = document.createElement("a");
+		link.href = `/article/${a.id}`;
+		link.className = "block read-link";
+
+		const h2 = document.createElement("h2");
+		h2.className =
+			"text-lg font-bold leading-snug tracking-tight mb-1 group-hover:text-brand transition-colors";
+		h2.textContent = a.title;
+
+		const p = document.createElement("p");
+		p.className = "text-sm text-text-secondary leading-relaxed line-clamp-2";
+		p.textContent = a.summary;
+
+		link.append(h2, p);
+		article.append(meta, link);
+		return article;
+	}
+
+	// View Transitions 후 목록/버튼이 새로 그려지므로 매 page-load마다 재바인딩
+	function setupLoadMore() {
+		const btn = document.getElementById("load-more") as HTMLButtonElement | null;
+		const list = document.getElementById("article-list");
+		if (!(btn && list)) return;
+
+		let page = Number(btn.dataset.nextPage ?? "2");
+		const category = btn.dataset.category ?? "";
+		const query = btn.dataset.query ?? "";
+
+		btn.addEventListener("click", async () => {
+			btn.disabled = true;
+			btn.textContent = "불러오는 중…";
+			try {
+				const params = new URLSearchParams({ page: String(page) });
+				if (category) params.set("category", category);
+				if (query) params.set("q", query);
+				const res = await fetch(`${API_BASE}/api/articles?${params}`);
+				const json = await res.json();
+				const data = json.data as { items: Article[]; hasMore: boolean };
+
+				for (const a of data.items) list.appendChild(renderCard(a));
+				page++;
+
+				if (data.hasMore) {
+					btn.disabled = false;
+					btn.textContent = "더 보기";
+				} else {
+					btn.remove();
+				}
+			} catch {
+				btn.disabled = false;
+				btn.textContent = "다시 시도";
+			}
+		});
+	}
+
+	document.addEventListener("astro:page-load", setupLoadMore);
+</script>
