@@ -1,3 +1,4 @@
+import { normalizeSections } from "@dansum/shared";
 import { SYSTEM_PROMPT, buildUserPrompt, type SummaryResult } from "./prompts.js";
 
 interface ChatMessage {
@@ -6,7 +7,10 @@ interface ChatMessage {
 }
 
 interface OpenAIResponse {
-	choices: Array<{ message: { content: string | null } }>;
+	choices: Array<{
+		message: { content: string | null };
+		finish_reason: string | null;
+	}>;
 }
 
 export async function summarizeArticle(
@@ -50,7 +54,8 @@ export async function summarizeArticle(
 		},
 		body: JSON.stringify({
 			model,
-			max_tokens: 1536,
+			// 섹션·중첩 불릿까지 담으려면 한국어 기준 2000~3000 토큰이 필요하다(실측 평균 약 1600).
+			max_tokens: 4096,
 			// JSON 모드: 응답을 항상 유효한 JSON 객체로 강제 (system 프롬프트에 'JSON' 명시 필요)
 			response_format: { type: "json_object" },
 			messages: [
@@ -66,10 +71,17 @@ export async function summarizeArticle(
 	}
 
 	const data = (await response.json()) as OpenAIResponse;
-	const text = data.choices[0]?.message.content;
+	const choice = data.choices[0];
+	const text = choice?.message.content;
 
 	if (!text) {
 		throw new Error("Empty response from OpenAI API");
+	}
+
+	// max_tokens에 걸려 잘린 JSON은 아래 JSON.parse에서 문법 오류로 튀어 원인이 가려진다.
+	// 여기서 먼저 끊어 로그에 원인이 그대로 남게 한다(호출부가 재시도로 처리).
+	if (choice.finish_reason === "length") {
+		throw new Error("Summary truncated: hit max_tokens (raise max_tokens or shorten input)");
 	}
 
 	// JSON 파싱 (json_object 모드라 보통 순수 JSON이지만 안전하게 코드블록도 제거)
@@ -86,21 +98,9 @@ export async function summarizeArticle(
 		result.keywords = [];
 	}
 
-	// sections 방어: 배열이 아니거나 형태가 어긋난 항목은 걸러냄(빈약한 본문이면 빈 배열)
-	result.sections = Array.isArray(result.sections)
-		? result.sections
-				.filter(
-					(s) =>
-						s &&
-						typeof s.heading === "string" &&
-						Array.isArray(s.points),
-				)
-				.map((s) => ({
-					heading: s.heading,
-					points: s.points.filter((p): p is string => typeof p === "string"),
-				}))
-				.filter((s) => s.heading.trim() !== "" && s.points.length > 0)
-		: [];
+	// sections 방어: 형태가 어긋난 항목은 걸러냄(빈약한 본문이면 빈 배열).
+	// API 조회 시점과 같은 규칙을 쓰도록 shared의 정규화 함수를 재사용한다.
+	result.sections = normalizeSections(result.sections);
 
 	return result;
 }

@@ -1,4 +1,5 @@
 export { hashUrl } from "./hash.js";
+export { normalizeSections } from "./sections.js";
 export { formatKoreanDate, formatRelativeTime, toISOString } from "./date.js";
 export {
 	CATEGORY_LABELS,

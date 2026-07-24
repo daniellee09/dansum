@@ -3,6 +3,7 @@ export type {
 	RawArticle,
 	Article,
 	ArticleSection,
+	SectionPoint,
 	DailyDigest,
 	Category,
 	NewsCluster,
