@@ -3,6 +3,7 @@ import {
 	type Article,
 	type ArticleSection,
 	type NewsCluster,
+	normalizeSections,
 } from "@dansum/shared";
 
 interface ArticleRow {
@@ -32,23 +33,14 @@ function safeParseArray(json: string): string[] {
 	}
 }
 
-/** sections(JSON)을 방어적으로 파싱: heading(string)·points(string[]) 형태만 통과 */
+/**
+ * sections(JSON)을 방어적으로 파싱.
+ * 중첩 불릿 도입 이전에 저장된 행은 points가 string[]인데, normalizeSections가
+ * 이를 { text } 형태로 승격해주므로 재요약 없이 그대로 렌더된다.
+ */
 function safeParseSections(json: string): ArticleSection[] {
 	try {
-		const v = JSON.parse(json);
-		if (!Array.isArray(v)) return [];
-		return v
-			.filter(
-				(s): s is { heading: string; points: unknown[] } =>
-					s != null &&
-					typeof s.heading === "string" &&
-					Array.isArray(s.points),
-			)
-			.map((s) => ({
-				heading: s.heading,
-				points: s.points.filter((p): p is string => typeof p === "string"),
-			}))
-			.filter((s) => s.heading.trim() !== "" && s.points.length > 0);
+		return normalizeSections(JSON.parse(json));
 	} catch {
 		return [];
 	}

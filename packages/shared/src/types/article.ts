@@ -27,10 +27,21 @@ export interface RawArticle {
 	createdAt: string;
 }
 
-/** 요약과 핵심 포인트 사이에 보여줄 구조화 정리 묶음(소제목 + 불릿) */
+/**
+ * 섹션 불릿 하나.
+ * 중첩은 GeekNews와 동일하게 1단(children)까지만 허용한다. 재귀 타입으로 두지 않는 이유는
+ * 모델이 깊은 트리를 뱉는 것을 스키마 차원에서 막고 렌더러를 단순하게 유지하기 위함.
+ */
+export interface SectionPoint {
+	/** 마크다운은 ** 강조만 허용(그 외 문법 금지) */
+	text: string;
+	children?: string[];
+}
+
+/** 구조화 정리 묶음(소제목 + 불릿). 상세 페이지의 "주요 내용" 블록 */
 export interface ArticleSection {
 	heading: string;
-	points: string[];
+	points: SectionPoint[];
 }
 
 export interface Article {

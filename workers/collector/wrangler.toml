@@ -20,4 +20,4 @@ OPENAI_MODEL = "gpt-4.1-mini"
 # Cloudflare AI Gateway 경유(지역 403 우회). 대시보드에서 게이트웨이 'dansum' 생성 필요.
 OPENAI_ENDPOINT = "https://gateway.ai.cloudflare.com/v1/af592b05882e4b6ea47e48376e3e2fa4/dansum/openai/chat/completions"
 MAX_HTML_BYTES = "400000"
-MAX_CONTENT_CHARS = "8000"
+MAX_CONTENT_CHARS = "12000"

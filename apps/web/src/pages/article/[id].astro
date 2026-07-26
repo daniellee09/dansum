@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getArticle, getRelatedArticles } from "../../lib/api";
+import { renderEmphasis } from "../../lib/markdown";
 import { CATEGORY_LABELS, formatKoreanDate, formatRelativeTime } from "@dansum/shared";
 import type { Article, Category } from "@dansum/shared";
 
@@ -83,31 +84,7 @@ if (!article && !error) return Astro.redirect("/");
 				</p>
 			</div>
 
-			<!-- 주요 내용(구조화 정리: 소제목 + 불릿) -->
-			{(article.sections ?? []).length > 0 && (
-				<div class="mb-8">
-					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
-						주요 내용
-					</h2>
-					<div class="space-y-5">
-						{article.sections.map((s) => (
-							<div>
-								<h3 class="text-base font-bold mb-2">{s.heading}</h3>
-								<ul class="space-y-2">
-									{s.points.map((p) => (
-										<li class="flex items-start gap-3">
-											<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-											<span class="text-base leading-relaxed">{p}</span>
-										</li>
-									))}
-								</ul>
-							</div>
-						))}
-					</div>
-				</div>
-			)}
-
-			<!-- 핵심 포인트 -->
+			<!-- 핵심 포인트(TL;DR): 이것만 읽어도 기사를 파악할 수 있는 블록이라 본문 정리보다 앞에 둔다 -->
 			<div class="mb-8">
 				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
 					핵심 포인트
@@ -116,11 +93,50 @@ if (!article && !error) return Astro.redirect("/");
 					{article.keyPoints.map((point) => (
 						<li class="flex items-start gap-3">
 							<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-							<span class="text-base leading-relaxed">{point}</span>
+							<span class="text-base leading-relaxed" set:html={renderEmphasis(point)} />
 						</li>
 					))}
 				</ul>
 			</div>
+
+			<!-- 주요 내용(구조화 정리: 소제목 + 최대 2단 불릿) -->
+			{(article.sections ?? []).length > 0 && (
+				<div class="mb-8">
+					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+						주요 내용
+					</h2>
+					<div class="space-y-6">
+						{article.sections.map((s) => (
+							<div>
+								<h3 class="text-base font-bold mb-2">{s.heading}</h3>
+								<ul class="space-y-2">
+									{s.points.map((p) => (
+										<li>
+											<div class="flex items-start gap-3">
+												<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
+												<span class="text-base leading-relaxed" set:html={renderEmphasis(p.text)} />
+											</div>
+											{p.children && p.children.length > 0 && (
+												<ul class="mt-1.5 ml-6 space-y-1.5">
+													{p.children.map((c) => (
+														<li class="flex items-start gap-2.5">
+															<span class="text-text-secondary text-xs leading-none mt-1.5">&#9702;</span>
+															<span
+																class="text-sm text-text-secondary leading-relaxed"
+																set:html={renderEmphasis(c)}
+															/>
+														</li>
+													))}
+												</ul>
+											)}
+										</li>
+									))}
+								</ul>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 
 			<!-- 키워드 -->
 			{article.keywords.length > 0 && (
