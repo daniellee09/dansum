@@ -9,6 +9,8 @@
 
 [**dansum-web.pages.dev →**](https://dansum-web.pages.dev)
 
+![Deployed on Cloudflare](https://img.shields.io/badge/deployed-Cloudflare-f38020?logo=cloudflare&logoColor=white)
+
 <sub>Astro · Hono · Cloudflare Workers · D1 · OpenAI</sub>
 
 </div>
