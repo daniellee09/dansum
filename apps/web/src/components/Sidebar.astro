@@ -3,14 +3,21 @@ import { CATEGORY_LABELS, CATEGORY_ORDER } from "@dansum/shared";
 
 const currentPath = Astro.url.pathname;
 
-/** 카테고리 도트 색(양쪽 테마에서 모두 읽히는 채도) */
-const CATEGORY_COLORS: Record<string, string> = {
-	finance: "#2f81f7",
-	market: "#3fb950",
-	industry: "#a371f7",
-	realestate: "#db6d28",
-	trade: "#1f9ea6",
-	macro: "#e3b341",
+/** 카테고리 아이콘: 24×24 viewBox, 선 아이콘(fill 없음)으로 다른 메뉴 아이콘과 톤을 맞춘다.
+    작은 크기(18px)에서 뭉개지지 않도록 획 수를 최소로 유지했다. */
+const CATEGORY_ICONS: Record<string, string> = {
+	// 금융: 지폐
+	finance: `<rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path stroke-linecap="round" d="M6 9.5v5M18 9.5v5" />`,
+	// 증시: 우상향 꺾은선
+	market: `<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5l5-5 3.5 3.5L20.5 6M15 6h5.5v5.5" />`,
+	// 산업·기업: 제품 상자(3D 큐브)
+	industry: `<path stroke-linejoin="round" d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path stroke-linecap="round" stroke-linejoin="round" d="M4.3 7.6L12 12l7.7-4.4M12 12v9" />`,
+	// 부동산: 창이 있는 건물
+	realestate: `<path stroke-linejoin="round" d="M4.5 21V4h8.5v17M13 12h6.5v9" /><path stroke-linecap="round" d="M3 21h18M7.5 8.5h2.5M7.5 13h2.5M15.8 16h1.4" />`,
+	// 무역·통상: 지구본
+	trade: `<circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path stroke-linecap="round" d="M3.2 12h17.6" />`,
+	// 거시·정책: 기둥이 있는 관공서
+	macro: `<path stroke-linecap="round" stroke-linejoin="round" d="M3.5 10L12 5l8.5 5" /><path stroke-linecap="round" d="M6 10.5v8M10 10.5v8M14 10.5v8M18 10.5v8M3 21h18" />`,
 };
 
 /** 아직 라우트가 없는 항목은 disabled로 두고 "준비 중" 배지를 단다 */
@@ -149,10 +156,14 @@ const communityItems = [
 							currentPath === `/category/${cat}` ? "font-semibold text-text bg-surface-alt" : "text-text",
 						]}
 					>
-						<span
-							class="h-2.5 w-2.5 shrink-0 rounded-full"
-							style={`background-color:${CATEGORY_COLORS[cat] ?? "#8b949e"}`}
+						<svg
+							class="w-[18px] h-[18px] shrink-0 text-text-secondary"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="1.8"
 							aria-hidden="true"
+							set:html={CATEGORY_ICONS[cat] ?? ""}
 						/>
 						{CATEGORY_LABELS[cat]}
 					</a>

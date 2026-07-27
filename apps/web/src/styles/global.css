@@ -74,6 +74,8 @@ html.dark {
 :root {
 	--sidebar-w: 280px;
 	--header-h: 60px;
+	/* 본문 칼럼 최대 폭(= Tailwind max-w-4xl). 레이아웃 보정 계산에 쓴다 */
+	--content-w: 56rem;
 }
 
 #app-header {
@@ -97,6 +99,11 @@ html.dark {
 @media (min-width: 1024px) {
 	.app-shell {
 		padding-left: var(--sidebar-w);
+		/* 본문 칼럼(max-w-4xl)을 '사이드바를 뺀 영역'이 아니라 '뷰포트' 기준 가운데에 두어
+		   헤더 검색창(뷰포트 중앙 정렬)과 세로 중심선을 맞춘다.
+		   왼쪽 사이드바 폭만큼 오른쪽에도 여백을 주면 되지만, 그만큼 칼럼이 좁아지면 안 되므로
+		   남는 여유폭(= 화면폭 - 사이드바 - 칼럼폭)까지만 준다. 여유가 없으면 0 → 기존 동작. */
+		padding-right: clamp(0px, 100% - var(--sidebar-w) - var(--content-w), var(--sidebar-w));
 	}
 	#app-sidebar {
 		transform: none;
@@ -105,8 +112,10 @@ html.dark {
 	#sidebar-overlay {
 		display: none;
 	}
+	/* 사이드바를 접으면 본문은 이미 뷰포트 기준 가운데라 보정이 필요 없다 */
 	html.sidebar-collapsed .app-shell {
 		padding-left: 0;
+		padding-right: 0;
 	}
 	html.sidebar-collapsed #app-sidebar {
 		transform: translateX(-100%);
