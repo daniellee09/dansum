@@ -1,0 +1,82 @@
+name: Deploy
+
+# 웹(dansum-web)은 Cloudflare Pages가 GitHub 연동으로 직접 빌드·배포하므로 여기서 다루지 않는다.
+# 이 워크플로는 D1 스키마와 워커(dansum-api · dansum-pipeline)만 책임진다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "workers/**"
+      - "packages/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+# 배포는 겹치면 안 된다. 진행 중인 배포는 취소하지 않고 순서대로 기다린다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+jobs:
+  # 1) 스키마 먼저. 코드가 스키마를 앞지르면 파이프라인 전체가 죽는다
+  #    (2026-07-27: image_url 컬럼 미적용으로 cron이 2시간 넘게 실패했다).
+  migrate:
+    name: D1 마이그레이션
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 적용 대기 중인 마이그레이션 확인
+        run: pnpm exec wrangler d1 migrations list dansum-db --remote
+        working-directory: apps/api
+
+      - name: 운영 D1에 적용
+        run: pnpm exec wrangler d1 migrations apply dansum-db --remote
+        working-directory: apps/api
+
+  # 2) 스키마가 준비된 뒤에만 워커를 올린다.
+  deploy:
+    name: 워커 배포 (${{ matrix.name }})
+    needs: migrate
+    runs-on: ubuntu-latest
+    strategy:
+      # 한쪽이 실패해도 다른 쪽은 끝까지 시도(부분 배포 상태를 로그로 명확히 남긴다)
+      fail-fast: false
+      matrix:
+        include:
+          - name: dansum-api
+            dir: apps/api
+          - name: dansum-pipeline
+            dir: workers/collector
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: ${{ matrix.name }} 배포
+        run: pnpm exec wrangler deploy
+        working-directory: ${{ matrix.dir }}

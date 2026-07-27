@@ -103,15 +103,36 @@ pnpm --filter @dansum/web dev            # http://localhost:4321
 
 ---
 
-## 배포 시 남은 작업 (자격증명 확보 후)
-아직 수행하지 않음 — Cloudflare 계정과 OpenAI API 키가 준비되면 진행:
+## 배포 (GitHub Actions)
 
-1. **Cloudflare 리소스 생성** 후 ID를 4개 `wrangler.toml`의 `placeholder-update-after-create`에 반영:
-   - D1: `wrangler d1 create dansum-db` → `database_id` (collector, fetcher, summarizer, api)
-   - KV: `wrangler kv namespace create CACHE` → `id` (summarizer, api)
-   - Queue: `wrangler queues create dansum-fetch` 와 `wrangler queues create dansum-summarize`
-2. **원격 D1 마이그레이션/시드**: 위 D1 명령에서 `--local` 제거하고 `--remote`로 실행.
-3. **시크릿 등록**: `cd workers/summarizer && wrangler secret put OPENAI_API_KEY`
-4. **워커 배포**: `apps/api`, `workers/collector`, `workers/fetcher`, `workers/summarizer`에서 각각 `wrangler deploy`
-5. **Web 배포(Cloudflare Pages)**: 빌드 환경변수 `PUBLIC_API_URL`을 배포된 API 도메인으로 설정.
-6. (선택) wrangler를 루트 devDependency로 고정 추가하면 `npx wrangler@4.100.0` 대신 일관된 버전 사용 가능.
+main에 push되면 자동으로 배포된다. **수동 `wrangler deploy`는 하지 않는다** —
+스키마와 코드가 따로 배포되면서 파이프라인이 죽는 사고가 있었다(아래 참고).
+
+| 대상 | 배포 주체 |
+| --- | --- |
+| `dansum-web` | Cloudflare Pages (GitHub 연동, 자체 빌드) |
+| D1 스키마 · `dansum-api` · `dansum-pipeline` | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
+
+`deploy.yml`은 **마이그레이션을 먼저 적용하고 그 다음에 워커를 올린다**. 순서가 핵심이다:
+코드가 스키마보다 앞서면 collector의 INSERT가 D1_ERROR로 터지고, `runPipeline` 전체가
+중단되어 수집·요약이 통째로 멈춘다(2026-07-27, `image_url` 컬럼 누락으로 2시간 중단).
+
+### 필요한 GitHub Secrets
+`Settings → Secrets and variables → Actions`:
+
+| 이름 | 값 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Workers Scripts:Edit + D1:Edit + Account Settings:Read 권한 토큰 |
+| `CLOUDFLARE_ACCOUNT_ID` | `wrangler whoami`의 Account ID |
+
+### 스키마 변경 절차
+1. `packages/db/migrations/NNNN_이름.sql` 추가 (번호는 이어서).
+2. 로컬 검증: `cd apps/api && wrangler d1 migrations apply dansum-db --local --persist-to ../../.wrangler-state`
+3. push → CI가 빈 DB에 전체 마이그레이션을 적용해 SQL을 검증하고, main이면 운영에 적용 후 워커 배포.
+
+적용 이력은 `d1_migrations` 테이블이 관리한다. 기존 DB를 이 방식으로 처음 전환할 때만
+[`packages/db/bootstrap_migrations_table.sql`](packages/db/bootstrap_migrations_table.sql)을 1회 실행한다.
+
+### 시크릿(런타임)
+`OPENAI_API_KEY`는 워커 시크릿이라 배포로 갱신되지 않는다:
+`cd workers/collector && wrangler secret put OPENAI_API_KEY`
