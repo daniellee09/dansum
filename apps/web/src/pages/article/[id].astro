@@ -88,6 +88,22 @@ if (!article && !error) return Astro.redirect("/");
 				</p>
 			)}
 
+			<!-- 대표 이미지: 제목 바로 아래. 목록과 같은 규칙(원본 크기 유지, 확대하지 않음)이되
+			     상세는 조금 더 크게 허용한다. 원본에 이미지가 없는 기사는 이 블록이 통째로 빠진다. -->
+			{article.imageUrl && (
+				<figure class="mb-6 overflow-hidden rounded-md border border-border bg-surface-alt">
+					<img
+						src={article.imageUrl}
+						alt={article.title}
+						loading="eager"
+						decoding="async"
+						referrerpolicy="no-referrer"
+						class="mx-auto block max-h-[440px] max-w-full object-contain"
+						onerror="this.closest('figure').remove()"
+					/>
+				</figure>
+			)}
+
 			<!-- 요약 -->
 			<div class="rounded-md border border-border bg-surface-alt px-4 py-3 mb-6">
 				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">

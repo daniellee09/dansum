@@ -108,21 +108,25 @@ const { clusters } = Astro.props;
 									<p class="text-[15px] text-text-secondary mt-1 line-clamp-2">
 										{a.summary}
 									</p>
+
+									<!-- 대표 이미지: 기사 아래에 크게. 원본이 500~660px대라 폭을 꽉 채우면
+									     확대돼 뭉개진다 → 원본 크기(최대 컬럼 폭·높이 340px)로만 두고 프레임 안에서 가운데 정렬.
+									     없거나 로드 실패하면 프레임째 사라진다(onerror). -->
+									{a.imageUrl && (
+										<div class="mt-3 overflow-hidden rounded-md border border-border bg-surface-alt">
+											<img
+												src={a.imageUrl}
+												alt=""
+												loading="lazy"
+												decoding="async"
+												referrerpolicy="no-referrer"
+												class="mx-auto block max-h-[340px] max-w-full object-contain"
+												onerror="this.closest('div').remove()"
+											/>
+										</div>
+									)}
 								</a>
 							</div>
-
-							<!-- 대표 이미지: 주요 뉴스에만 노출. 없거나 로드 실패하면 자리 자체가 사라진다 -->
-							{a.imageUrl && (
-								<img
-									src={a.imageUrl}
-									alt=""
-									loading="lazy"
-									decoding="async"
-									referrerpolicy="no-referrer"
-									class="hidden sm:block shrink-0 w-28 h-20 rounded-md object-cover bg-surface-alt"
-									onerror="this.remove()"
-								/>
-							)}
 						</div>
 					</li>
 				);
