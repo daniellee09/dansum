@@ -11,5 +11,8 @@
     "@dansum/shared": "workspace:*",
     "@mozilla/readability": "^0.5.0",
     "linkedom": "^0.18.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.59.2"
   }
 }

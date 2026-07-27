@@ -10,5 +10,8 @@
   "dependencies": {
     "@dansum/shared": "workspace:*",
     "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.59.2"
   }
 }

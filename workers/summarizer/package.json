@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "@dansum/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "4.59.2"
   }
 }
