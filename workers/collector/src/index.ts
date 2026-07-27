@@ -257,6 +257,7 @@ interface FetchedRow {
 	url: string;
 	publishedAt: string | null;
 	retryCount: number;
+	imageUrl: string | null;
 }
 
 async function summarizeFetched(env: Env): Promise<number> {
@@ -264,7 +265,8 @@ async function summarizeFetched(env: Env): Promise<number> {
 	const res = await env.DB.prepare(
 		`SELECT r.id AS rawArticleId, r.source_id AS sourceId, s.name AS sourceName,
 		        r.title AS title, r.description AS description, r.content AS content,
-		        r.url AS url, r.published_at AS publishedAt, r.retry_count AS retryCount
+		        r.url AS url, r.published_at AS publishedAt, r.retry_count AS retryCount,
+		        r.image_url AS imageUrl
 		 FROM raw_articles r JOIN sources s ON s.id = r.source_id
 		 WHERE r.status = 'fetched' ORDER BY r.published_at DESC LIMIT ?`,
 	)
@@ -309,8 +311,10 @@ async function summarizeFetched(env: Env): Promise<number> {
 			const s = out.value;
 			writeStmts.push(
 				env.DB.prepare(
-					`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+					// image_url은 RSS 수집 때 raw_articles에 담긴 값을 그대로 옮긴다
+					// (이 복사가 빠져 있어 대표 이미지가 계속 비어 있었다).
+					`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at, image_url)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?)`,
 				).bind(
 					crypto.randomUUID(),
 					r.rawArticleId,
@@ -325,6 +329,7 @@ async function summarizeFetched(env: Env): Promise<number> {
 					r.url,
 					r.sourceName,
 					r.publishedAt,
+					r.imageUrl,
 				),
 				env.DB.prepare("UPDATE raw_articles SET status = 'completed' WHERE id = ?").bind(r.rawArticleId),
 			);
