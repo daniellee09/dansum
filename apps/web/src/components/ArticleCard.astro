@@ -17,15 +17,23 @@ const { article } = Astro.props;
 <article class="group -mx-4 px-4 py-5 transition-colors hover:bg-surface-alt">
 	<!-- 헤더: 아이콘 + 매체명·카테고리 / 시간. 향후 "댓글 N"은 이 줄 끝에 append -->
 	<div class="flex items-start gap-x-2.5">
-		<SourceIcon
-			sourceId={article.sourceId}
-			sourceUrl={article.sourceUrl}
-			sourceName={article.sourceName}
-			size={26}
-		/>
+		<!-- 아바타도 매체 목록으로 이동. 이름 링크와 중복 탭 정지가 되지 않게 포커스 대상에서 뺀다 -->
+		<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
+			<SourceIcon
+				sourceId={article.sourceId}
+				sourceUrl={article.sourceUrl}
+				sourceName={article.sourceName}
+				size={26}
+			/>
+		</a>
 		<div class="min-w-0 text-sm leading-tight">
 			<div class="flex items-center gap-x-2">
-				<span class="font-semibold text-text">{article.sourceName}</span>
+				<a
+					href={`/source/${article.sourceId}`}
+					class="font-semibold text-text hover:text-brand hover:underline"
+				>
+					{article.sourceName}
+				</a>
 				<a
 					href={`/category/${article.category}`}
 					class="text-text-secondary hover:text-brand hover:underline"

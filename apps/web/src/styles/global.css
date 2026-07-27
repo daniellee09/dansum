@@ -158,6 +158,20 @@ h1, h2, h3 {
 	text-wrap: balance;
 }
 
+/* 카드 전체를 기사 링크로 만들되, 카드 안의 매체·카테고리 링크는 따로 눌리게 하는 패턴.
+   (a 안에 a를 중첩하면 안 되므로) 제목 링크의 ::after를 카드 전체에 덮어 클릭 영역을 넓히고,
+   같이 눌려야 할 링크는 .stretch-over 로 그 위에 띄운다. 부모 카드에 relative 필요. */
+.stretch-link::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+
+.stretch-over {
+	position: relative;
+	z-index: 1;
+}
+
 /* 이미 방문한 기사: 제목을 톤다운해 "읽음" 표시.
    메타·요약·순위는 각자 색을 명시해 영향 없고, 색을 지정 않은 제목만 상속으로 흐려진다.
    (:visited는 프라이버시상 색상 계열만 바뀌고 JS로는 읽을 수 없음) */

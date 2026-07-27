@@ -18,11 +18,14 @@ async function fetchApi<T>(path: string): Promise<T> {
 export async function getArticles(options?: {
 	page?: number;
 	category?: string;
+	/** 매체 필터(sources.id) */
+	source?: string;
 	q?: string;
 }) {
 	const params = new URLSearchParams();
 	if (options?.page) params.set("page", String(options.page));
 	if (options?.category) params.set("category", options.category);
+	if (options?.source) params.set("source", options.source);
 	if (options?.q) params.set("q", options.q);
 
 	const query = params.toString();

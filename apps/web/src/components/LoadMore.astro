@@ -3,11 +3,13 @@ interface Props {
 	hasMore: boolean;
 	/** 카테고리 페이지에서 필터를 유지하기 위한 slug. 홈에서는 비움 */
 	category?: string;
+	/** 매체 페이지에서 필터를 유지하기 위한 sources.id. 그 외에는 비움 */
+	source?: string;
 	/** 검색 페이지에서 검색어를 유지하기 위한 q. 그 외에는 비움 */
 	query?: string;
 }
 
-const { hasMore, category, query } = Astro.props;
+const { hasMore, category, source, query } = Astro.props;
 ---
 
 {hasMore && (
@@ -16,6 +18,7 @@ const { hasMore, category, query } = Astro.props;
 			id="load-more"
 			data-next-page="2"
 			data-category={category ?? ""}
+			data-source={source ?? ""}
 			data-query={query ?? ""}
 			class="px-5 py-2 text-sm font-semibold text-text border border-border rounded-md bg-surface-alt hover:border-text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 		>
@@ -68,8 +71,9 @@ const { hasMore, category, query } = Astro.props;
 
 		const nameRow = document.createElement("div");
 		nameRow.className = "flex items-center gap-x-2";
-		const src = document.createElement("span");
-		src.className = "font-semibold text-text";
+		const src = document.createElement("a");
+		src.href = `/source/${a.sourceId}`;
+		src.className = "font-semibold text-text hover:text-brand hover:underline";
 		src.textContent = a.sourceName;
 		const cat = document.createElement("a");
 		cat.href = `/category/${a.category}`;
@@ -83,7 +87,14 @@ const { hasMore, category, query } = Astro.props;
 		time.textContent = formatRelativeTime(a.publishedAt);
 
 		headText.append(nameRow, time);
-		head.append(renderSourceIcon(a, 26), headText);
+		// 아바타도 매체 목록으로(이름 링크와 중복 탭 정지가 되지 않게 포커스 대상에서 제외)
+		const iconLink = document.createElement("a");
+		iconLink.href = `/source/${a.sourceId}`;
+		iconLink.tabIndex = -1;
+		iconLink.setAttribute("aria-hidden", "true");
+		iconLink.className = "shrink-0";
+		iconLink.appendChild(renderSourceIcon(a, 26));
+		head.append(iconLink, headText);
 
 		const link = document.createElement("a");
 		link.href = `/article/${a.id}`;
@@ -120,6 +131,7 @@ const { hasMore, category, query } = Astro.props;
 
 		let page = Number(btn.dataset.nextPage ?? "2");
 		const category = btn.dataset.category ?? "";
+		const source = btn.dataset.source ?? "";
 		const query = btn.dataset.query ?? "";
 
 		btn.addEventListener("click", async () => {
@@ -128,6 +140,7 @@ const { hasMore, category, query } = Astro.props;
 			try {
 				const params = new URLSearchParams({ page: String(page) });
 				if (category) params.set("category", category);
+				if (source) params.set("source", source);
 				if (query) params.set("q", query);
 				const res = await fetch(`${API_BASE}/api/articles?${params}`);
 				const json = await res.json();

@@ -17,9 +17,16 @@ articles.get("/", async (c) => {
 	const page = Number(c.req.query("page") ?? "1");
 	const pageSize = Number(c.req.query("pageSize") ?? "20");
 	const category = c.req.query("category");
+	const source = c.req.query("source");
 	const q = c.req.query("q");
 
-	const result = await getArticles(c.env.DB, { page, pageSize, category, q });
+	const result = await getArticles(c.env.DB, {
+		page,
+		pageSize,
+		category,
+		source,
+		q,
+	});
 
 	return c.json({ success: true, data: result });
 });

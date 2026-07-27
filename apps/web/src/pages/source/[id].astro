@@ -1,0 +1,61 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleList from "../../components/ArticleList.astro";
+import LoadMore from "../../components/LoadMore.astro";
+import SourceIcon from "../../components/SourceIcon.astro";
+import { getArticles } from "../../lib/api";
+
+const { id } = Astro.params;
+
+if (!id) return Astro.redirect("/");
+
+let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
+let error: string | null = null;
+
+try {
+	articles = await getArticles({ source: id });
+} catch (e) {
+	error = e instanceof Error ? e.message : "Failed to load articles";
+}
+
+// 매체 표시 정보는 별도 API 없이 첫 기사에서 가져온다(결과가 없으면 id를 그대로 보여준다)
+const lead = articles?.items[0];
+const sourceName = lead?.sourceName ?? id;
+---
+
+<BaseLayout
+	title={`${sourceName} - 단숨`}
+	description={`${sourceName}의 최신 경제 뉴스 AI 요약`}
+>
+	<section>
+		<div class="mb-3 flex items-center gap-2.5">
+			{lead && (
+				<SourceIcon
+					sourceId={lead.sourceId}
+					sourceUrl={lead.sourceUrl}
+					sourceName={lead.sourceName}
+					size={28}
+				/>
+			)}
+			<div class="min-w-0">
+				<h2 class="text-lg font-bold tracking-tight leading-tight">{sourceName}</h2>
+				{articles && (
+					<p class="text-[13px] text-text-secondary tabular-nums">
+						기사 {articles.total}건
+					</p>
+				)}
+			</div>
+		</div>
+
+		{error ? (
+			<div class="py-12 text-center">
+				<p class="text-text-secondary">{error}</p>
+			</div>
+		) : articles ? (
+			<>
+				<ArticleList articles={articles.items} />
+				<LoadMore hasMore={articles.hasMore} source={id} />
+			</>
+		) : null}
+	</section>
+</BaseLayout>

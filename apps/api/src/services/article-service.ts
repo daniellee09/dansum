@@ -79,6 +79,8 @@ export async function getArticles(
 		page?: number;
 		pageSize?: number;
 		category?: string;
+		/** 매체 필터(sources.id). 목록의 매체명을 눌렀을 때 쓴다 */
+		source?: string;
 		q?: string;
 	},
 ) {
@@ -92,6 +94,11 @@ export async function getArticles(
 	if (options.category) {
 		conditions.push("category = ?");
 		bindings.push(options.category);
+	}
+
+	if (options.source) {
+		conditions.push("source_id = ?");
+		bindings.push(options.source);
 	}
 
 	// 검색어: 공백으로 토큰 분리 → 각 토큰이 (여러 필드 중 어디든) 모두 들어간 기사만(토큰 간 AND).

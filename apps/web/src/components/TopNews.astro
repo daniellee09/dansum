@@ -28,8 +28,9 @@ const { clusters } = Astro.props;
 				const isDown = rc !== null && rc < 0;
 
 				return (
-					<li class="group -mx-3 px-3 py-3.5 transition-colors hover:bg-surface-alt">
-						<a href={`/article/${a.id}`} class="flex gap-4 items-start read-link">
+					<li class="group relative -mx-3 px-3 py-3.5 transition-colors hover:bg-surface-alt">
+						<!-- 카드 전체가 기사 링크(제목 링크의 stretch-link). 매체·카테고리는 그 위에서 따로 눌린다 -->
+						<div class="flex gap-4 items-start">
 
 							<!-- 순위 번호 + 변동 표시 -->
 							<div class="flex flex-col items-center w-7 shrink-0 pt-0.5 gap-0.5">
@@ -63,17 +64,32 @@ const { clusters } = Astro.props;
 								<!-- 출처 라인(레딧식): 아이콘 + 매체명 · 카테고리 · 시간 -->
 								<!-- 좁은 화면에서 각 항목이 글자 단위로 쪼개지지 않도록 항목별 nowrap + 줄바꿈 허용 -->
 								<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-text-secondary">
-									<SourceIcon
-										sourceId={a.sourceId}
-										sourceUrl={a.sourceUrl}
-										sourceName={a.sourceName}
-										size={22}
-									/>
-									<span class="font-bold text-text whitespace-nowrap">{a.sourceName}</span>
+									<a
+										href={`/source/${a.sourceId}`}
+										tabindex="-1"
+										aria-hidden="true"
+										class="stretch-over shrink-0"
+									>
+										<SourceIcon
+											sourceId={a.sourceId}
+											sourceUrl={a.sourceUrl}
+											sourceName={a.sourceName}
+											size={22}
+										/>
+									</a>
+									<a
+										href={`/source/${a.sourceId}`}
+										class="stretch-over font-bold text-text whitespace-nowrap hover:text-brand hover:underline"
+									>
+										{a.sourceName}
+									</a>
 									<span aria-hidden="true">·</span>
-									<span class="font-medium text-accent whitespace-nowrap">
+									<a
+										href={`/category/${a.category}`}
+										class="stretch-over font-medium text-accent whitespace-nowrap hover:text-brand hover:underline"
+									>
 										{CATEGORY_LABELS[a.category as Category] ?? a.category}
-									</span>
+									</a>
 									<span aria-hidden="true">·</span>
 									<time class="tabular-nums whitespace-nowrap">{formatRelativeTime(a.publishedAt)}</time>
 									{cluster.coverage > 1 && (
@@ -84,13 +100,15 @@ const { clusters } = Astro.props;
 									)}
 								</div>
 
-								<h3 class="text-lg font-semibold leading-snug mt-1.5 group-hover:text-brand transition-colors">
-									{a.title}
-								</h3>
+								<a href={`/article/${a.id}`} class="read-link stretch-link block">
+									<h3 class="text-lg font-semibold leading-snug mt-1.5 group-hover:text-brand transition-colors">
+										{a.title}
+									</h3>
 
-								<p class="text-[15px] text-text-secondary mt-1 line-clamp-2">
-									{a.summary}
-								</p>
+									<p class="text-[15px] text-text-secondary mt-1 line-clamp-2">
+										{a.summary}
+									</p>
+								</a>
 							</div>
 
 							<!-- 대표 이미지: 주요 뉴스에만 노출. 없거나 로드 실패하면 자리 자체가 사라진다 -->
@@ -105,7 +123,7 @@ const { clusters } = Astro.props;
 									onerror="this.remove()"
 								/>
 							)}
-						</a>
+						</div>
 					</li>
 				);
 			})}

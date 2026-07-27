@@ -41,17 +41,24 @@ if (!article && !error) return Astro.redirect("/");
 		<article class="rounded-lg border border-border bg-surface p-6 sm:p-8 my-2">
 			<!-- 메타 -->
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-[15px]">
-				<SourceIcon
-					sourceId={article.sourceId}
-					sourceUrl={article.sourceUrl}
-					sourceName={article.sourceName}
-					size={30}
-				/>
-				<span class="font-bold text-text">{article.sourceName}</span>
+				<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
+					<SourceIcon
+						sourceId={article.sourceId}
+						sourceUrl={article.sourceUrl}
+						sourceName={article.sourceName}
+						size={30}
+					/>
+				</a>
+				<a
+					href={`/source/${article.sourceId}`}
+					class="font-bold text-text hover:text-brand hover:underline"
+				>
+					{article.sourceName}
+				</a>
 				<span class="text-text-secondary">&middot;</span>
 				<a
 					href={`/category/${article.category}`}
-					class="font-semibold text-accent hover:underline"
+					class="font-semibold text-accent hover:text-brand hover:underline"
 				>
 					{CATEGORY_LABELS[article.category as Category] ?? article.category}
 				</a>
@@ -164,19 +171,26 @@ if (!article && !error) return Astro.redirect("/");
 					</h2>
 					<ul class="divide-y divide-border">
 						{related.map((r) => (
-							<li>
-								<a href={`/article/${r.id}`} class="block py-3 group read-link">
-									<div class="flex items-center gap-x-2 mb-1.5 text-[13px] text-text-secondary">
+							<li class="group relative py-3">
+								<div class="flex items-center gap-x-2 mb-1.5 text-[13px] text-text-secondary">
+									<a href={`/source/${r.sourceId}`} tabindex="-1" aria-hidden="true" class="stretch-over shrink-0">
 										<SourceIcon
 											sourceId={r.sourceId}
 											sourceUrl={r.sourceUrl}
 											sourceName={r.sourceName}
 											size={22}
 										/>
-										<span class="font-bold text-text">{r.sourceName}</span>
-										<span aria-hidden="true">·</span>
-										<time class="tabular-nums">{formatRelativeTime(r.publishedAt)}</time>
-									</div>
+									</a>
+									<a
+										href={`/source/${r.sourceId}`}
+										class="stretch-over font-bold text-text hover:text-brand hover:underline"
+									>
+										{r.sourceName}
+									</a>
+									<span aria-hidden="true">·</span>
+									<time class="tabular-nums">{formatRelativeTime(r.publishedAt)}</time>
+								</div>
+								<a href={`/article/${r.id}`} class="read-link stretch-link block">
 									<p class="text-[17px] font-semibold leading-snug group-hover:text-brand transition-colors">
 										{r.title}
 									</p>
