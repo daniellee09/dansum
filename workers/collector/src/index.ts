@@ -2,7 +2,7 @@ import { MAX_RETRY_COUNT, hashUrl } from "@dansum/shared";
 // 요약 로직은 summarizer 워커에서 재사용(중복 제거). esbuild가 번들 시 함께 묶는다.
 import { summarizeArticle } from "../../summarizer/src/claude/client.js";
 // 본문 추출은 무료 플랜 CPU 한도 때문에 readability 대신 경량(정규식) 추출기 사용.
-import { extractArticleLight } from "./light-extract.js";
+import { extractArticleLight, extractImageLight } from "./light-extract.js";
 import { parseRssFeed } from "./parsers/rss-parser.js";
 import { NEWS_SOURCES } from "./sources/config.js";
 
@@ -214,6 +214,7 @@ async function fetchPending(env: Env): Promise<void> {
 	const results = await Promise.all(
 		rows.map(async (row) => {
 			let content: string | null = null;
+			let imageUrl: string | null = null;
 			try {
 				const res = await fetch(row.url, {
 					headers: {
@@ -226,20 +227,24 @@ async function fetchPending(env: Env): Promise<void> {
 					if (html.length > maxHtml) html = html.slice(0, maxHtml);
 					const extracted = extractArticleLight(html, maxChars);
 					if (extracted) content = extracted.text;
+					// 같은 HTML에서 대표 이미지도 뽑는다(추가 요청 없음)
+					imageUrl = extractImageLight(html, row.url);
 				}
 			} catch (error) {
 				console.warn(`[Fetch] ${row.url}:`, error);
 			}
-			return { id: row.rawArticleId, content };
+			return { id: row.rawArticleId, content, imageUrl };
 		}),
 	);
 
 	// 본문 추출 실패해도 description 폴백으로 요약하도록 fetched 전이 — 한 번의 배치(1 서브리퀘스트)
+	// image_url은 og:image를 우선한다: RSS 썸네일보다 원본이 크고(연합뉴스 500x262 → 1200x628),
+	// RSS에 이미지가 없는 매체(한국경제)도 여기서 채워진다. og가 없으면 기존 RSS 값을 유지.
 	await env.DB.batch(
 		results.map((r) =>
 			env.DB.prepare(
-				"UPDATE raw_articles SET content = ?, status = 'fetched' WHERE id = ?",
-			).bind(r.content, r.id),
+				"UPDATE raw_articles SET content = ?, image_url = COALESCE(?, image_url), status = 'fetched' WHERE id = ?",
+			).bind(r.content, r.imageUrl, r.id),
 		),
 	);
 }

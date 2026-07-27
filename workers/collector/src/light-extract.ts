@@ -24,6 +24,39 @@ function stripTags(html: string): string {
 	return decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
+/** 대표 이미지 메타 태그. 앞에 있는 것부터 우선한다(og:image가 사실상 표준). */
+const IMAGE_META_PATTERNS = [
+	/<meta[^>]+property=["']og:image(?::url)?["'][^>]+content=["']([^"']+)["']/i,
+	/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::url)?["']/i,
+	/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+];
+
+/**
+ * 기사 HTML에서 대표 이미지(og:image → twitter:image)를 뽑는다.
+ * 본문 추출용으로 이미 받아 둔 HTML을 그대로 쓰므로 추가 요청이 들어가지 않는다.
+ * 메타 태그는 <head>에 있어 MAX_HTML_BYTES로 잘린 앞부분만으로 충분하다.
+ *
+ * RSS 썸네일보다 원본이 큰 경우가 많다(연합뉴스: RSS 500x262 vs og 1200x628).
+ * 한국경제처럼 RSS에 이미지 필드가 아예 없는 매체는 이 경로로만 이미지를 얻는다.
+ */
+export function extractImageLight(html: string, pageUrl: string): string | null {
+	for (const re of IMAGE_META_PATTERNS) {
+		const m = html.match(re);
+		if (!m?.[1]) continue;
+		const url = decodeEntities(m[1].trim());
+		try {
+			const abs = new URL(url, pageUrl);
+			if (abs.protocol !== "http:" && abs.protocol !== "https:") continue;
+			// 대부분의 매체가 https를 지원하고, http면 브라우저가 혼합 콘텐츠로 막는다.
+			abs.protocol = "https:";
+			return abs.toString();
+		} catch {
+			// 상대 경로 해석 실패 → 다음 패턴
+		}
+	}
+	return null;
+}
+
 /**
  * 정규식 기반 경량 본문 추출 (무료 플랜 CPU 한도 대응).
  * DOM을 만들지 않고 <p> 텍스트를 모아 본문을 근사한다. readability보다 품질은 낮지만
