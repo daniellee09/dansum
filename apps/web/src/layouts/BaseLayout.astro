@@ -3,6 +3,7 @@ import "../styles/global.css";
 import { ClientRouter } from "astro:transitions";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+import Sidebar from "../components/Sidebar.astro";
 
 interface Props {
 	title?: string;
@@ -54,7 +55,7 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 		<!-- 페이지 전환 애니메이션(SPA식 부드러운 전환) -->
 		<ClientRouter />
 
-		<!-- 다크 모드 깜빡임 방지: 최초 렌더 전 + 페이지 전환(swap) 직후에 클래스 재적용 -->
+		<!-- 다크 모드·사이드바 깜빡임 방지: 최초 렌더 전 + 페이지 전환(swap) 직후에 클래스 재적용 -->
 		<script is:inline>
 			function applyTheme() {
 				const stored = localStorage.getItem("theme");
@@ -64,25 +65,40 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 					stored === "dark" || (!stored && prefersDark),
 				);
 			}
+			// 데스크톱 사이드바는 기본 고정. 사용자가 접었을 때만 클래스를 붙인다.
+			function applySidebar() {
+				document.documentElement.classList.toggle(
+					"sidebar-collapsed",
+					localStorage.getItem("sidebar") === "collapsed",
+				);
+			}
 			applyTheme();
-			// View Transitions swap 시 들어오는 SSR 문서엔 .dark가 없어 깜빡일 수 있어 재적용
-			document.addEventListener("astro:after-swap", applyTheme);
+			applySidebar();
+			// View Transitions swap 시 들어오는 SSR 문서엔 상태 클래스가 없어 깜빡일 수 있어 재적용
+			document.addEventListener("astro:after-swap", () => {
+				applyTheme();
+				applySidebar();
+			});
 		</script>
 	</head>
-	<body class="min-h-screen flex flex-col">
-		<div class="ambient" aria-hidden="true"></div>
+	<body class="min-h-screen pt-[var(--header-h)]">
+		<!-- 헤더는 전폭이라 app-shell(사이드바 폭만큼 밀림) 바깥에 둔다 -->
 		<Header />
-		<main class="flex-1 w-full max-w-3xl mx-auto px-5 py-8">
-			<slot />
-		</main>
-		<Footer />
+		<Sidebar />
+		<!-- app-shell: 데스크톱에서 고정된 사이드바 폭만큼 밀린다(global.css) -->
+		<div class="app-shell flex flex-col transition-[padding] duration-200 ease-out">
+			<main class="flex-1 w-full max-w-4xl mx-auto px-5 py-7">
+				<slot />
+			</main>
+			<Footer />
+		</div>
 
 		<!-- 맨 위로: 일정 스크롤 후 우하단에 부드럽게 등장 -->
 		<button
 			id="to-top"
 			type="button"
 			aria-label="맨 위로"
-			class="fixed bottom-6 right-6 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface/80 backdrop-blur text-text-secondary shadow-sm transition-all duration-200 hover:text-text hover:bg-surface-alt opacity-0 translate-y-2 pointer-events-none"
+			class="fixed bottom-6 right-6 z-20 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition-all duration-200 hover:text-text hover:bg-surface-alt opacity-0 translate-y-2 pointer-events-none"
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5 12l7-7 7 7" />

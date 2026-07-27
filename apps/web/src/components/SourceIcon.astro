@@ -1,0 +1,34 @@
+---
+import { getSourceMeta } from "../lib/source";
+
+interface Props {
+	sourceId: string;
+	sourceUrl: string;
+	sourceName: string;
+	/** 아바타 지름(px). 목록은 18, 상세는 24 */
+	size?: number;
+}
+
+const { sourceId, sourceUrl, sourceName, size = 18 } = Astro.props;
+const { initial, color, iconUrl } = getSourceMeta(sourceId, sourceUrl, sourceName);
+---
+
+<!-- 주의: LoadMore.astro의 renderSourceIcon()과 마크업 중복 — 한쪽 수정 시 반드시 동기화 -->
+<span
+	class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white leading-none"
+	style={`width:${size}px;height:${size}px;background-color:${color};font-size:${Math.round(size * 0.5)}px`}
+	aria-hidden="true"
+>
+	{initial}
+	{iconUrl && (
+		<img
+			src={iconUrl}
+			alt=""
+			loading="lazy"
+			width={size}
+			height={size}
+			class="absolute inset-0 h-full w-full object-cover"
+			onerror="this.remove()"
+		/>
+	)}
+</span>

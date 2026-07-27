@@ -10,7 +10,8 @@ const { articles } = Astro.props;
 ---
 
 {articles.length > 0 ? (
-	<div id="article-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	<!-- -mx-4 px-4: 자식(ArticleCard)의 호버 확장 폭과 구분선 폭을 맞추기 위해 같이 넓힌다 -->
+	<div id="article-list" class="-mx-4 px-4 divide-y divide-border border-t border-border">
 		{articles.map((article) => (
 			<ArticleCard article={article} />
 		))}

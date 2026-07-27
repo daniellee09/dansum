@@ -1,4 +1,4 @@
-import { extractArticle } from "./extract.js";
+import { extractArticle, extractImageUrl } from "./extract.js";
 
 interface Env {
 	DB: D1Database;
@@ -69,6 +69,7 @@ async function processArticle(msg: FetchMessage, env: Env): Promise<void> {
 		.run();
 
 	let content: string | null = null;
+	let imageUrl: string | null = null;
 	try {
 		const response = await fetch(url, {
 			headers: {
@@ -81,6 +82,7 @@ async function processArticle(msg: FetchMessage, env: Env): Promise<void> {
 			if (html.length > maxHtml) html = html.slice(0, maxHtml);
 			const extracted = extractArticle(html, maxChars);
 			if (extracted) content = extracted.text;
+			imageUrl = extractImageUrl(html, url);
 		} else {
 			console.warn(`[Fetcher] HTTP ${response.status} for ${url}`);
 		}
@@ -91,8 +93,11 @@ async function processArticle(msg: FetchMessage, env: Env): Promise<void> {
 
 	// 본문 추출 성공/실패와 무관하게 'fetched'로 전이 → summarizer로 넘김
 	// (content가 null이면 summarizer가 description 폴백으로 요약)
-	await env.DB.prepare("UPDATE raw_articles SET content = ?, status = 'fetched' WHERE id = ?")
-		.bind(content, rawArticleId)
+	// image_url은 RSS 수집분이 우선 — og:image는 비어 있을 때만 채운다(COALESCE)
+	await env.DB.prepare(
+		"UPDATE raw_articles SET content = ?, image_url = COALESCE(image_url, ?), status = 'fetched' WHERE id = ?",
+	)
+		.bind(content, imageUrl, rawArticleId)
 		.run();
 
 	await env.SUMMARIZE_QUEUE.send({ rawArticleId, sourceId, sourceName });

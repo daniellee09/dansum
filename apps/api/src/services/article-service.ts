@@ -19,6 +19,7 @@ interface ArticleRow {
 	keywords: string;
 	source_url: string;
 	source_name: string;
+	image_url: string | null;
 	published_at: string;
 	summarized_at: string;
 	created_at: string;
@@ -60,6 +61,7 @@ function rowToArticle(row: ArticleRow): Article {
 		keywords: safeParseArray(row.keywords),
 		sourceUrl: row.source_url,
 		sourceName: row.source_name,
+		imageUrl: row.image_url ?? null,
 		publishedAt: row.published_at,
 		summarizedAt: row.summarized_at,
 		createdAt: row.created_at,

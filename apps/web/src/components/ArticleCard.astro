@@ -1,6 +1,7 @@
 ---
 import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
 import type { Article, Category } from "@dansum/shared";
+import SourceIcon from "./SourceIcon.astro";
 
 interface Props {
 	article: Article;
@@ -9,28 +10,47 @@ interface Props {
 const { article } = Astro.props;
 ---
 
-<article class="group h-full flex flex-col rounded-2xl border border-border bg-surface/60 backdrop-blur-sm p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(2,6,23,0.07)]">
-	<!-- 메타 정보 (카테고리는 별도 링크라 본문 앵커 밖에 둠) -->
-	<div class="flex items-center gap-2 mb-1.5 text-xs">
-		<a
-			href={`/category/${article.category}`}
-			class="font-semibold text-accent hover:underline"
-		>
-			{CATEGORY_LABELS[article.category as Category] ?? article.category}
-		</a>
-		<span class="font-medium text-text-secondary">{article.sourceName}</span>
-		<span class="text-text-secondary">{formatRelativeTime(article.publishedAt)}</span>
+<!-- 주의: LoadMore.astro의 renderCard()와 마크업 중복 — 한쪽 수정 시 반드시 동기화 -->
+<!-- 기사 사이는 목록의 구분선(divide-y)이 나누고, 칸 안쪽은 요약 패널까지 갖춘 구성.
+     -mx-4 px-4: 호버 배경을 본문보다 좌우로 넓혀 "행 전체"가 선택된 느낌을 준다.
+     (ArticleList도 같은 값으로 확장해야 구분선과 폭이 맞는다) -->
+<article class="group -mx-4 px-4 py-5 transition-colors hover:bg-surface-alt">
+	<!-- 헤더: 아이콘 + 매체명·카테고리 / 시간. 향후 "댓글 N"은 이 줄 끝에 append -->
+	<div class="flex items-start gap-x-2.5">
+		<SourceIcon
+			sourceId={article.sourceId}
+			sourceUrl={article.sourceUrl}
+			sourceName={article.sourceName}
+			size={26}
+		/>
+		<div class="min-w-0 text-sm leading-tight">
+			<div class="flex items-center gap-x-2">
+				<span class="font-semibold text-text">{article.sourceName}</span>
+				<a
+					href={`/category/${article.category}`}
+					class="text-text-secondary hover:text-brand hover:underline"
+				>
+					{CATEGORY_LABELS[article.category as Category] ?? article.category}
+				</a>
+			</div>
+			<time class="mt-1 block text-[13px] text-text-secondary tabular-nums">
+				{formatRelativeTime(article.publishedAt)}
+			</time>
+		</div>
 	</div>
 
-	<a href={`/article/${article.id}`} class="block read-link">
-		<!-- 제목 - 타이포그래피 핵심 -->
-		<h2 class="text-lg font-bold leading-snug tracking-tight mb-1 group-hover:text-brand transition-colors">
+	<a href={`/article/${article.id}`} class="block read-link mt-3.5">
+		<h2 class="text-xl font-semibold leading-snug group-hover:text-brand transition-colors">
 			{article.title}
 		</h2>
-
-		<!-- 요약 (2줄로 축약, 상세 페이지에서 전문·핵심포인트 확인) -->
-		<p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
-			{article.summary}
-		</p>
+		<!-- 요약: 칸 안쪽 중첩 패널. 행이 호버되면 배경이 같아져 묻히므로 반대로 뒤집는다 -->
+		<div class="mt-3 rounded-md border border-border bg-surface-alt group-hover:bg-surface transition-colors px-4 py-3.5">
+			<p class="text-[15px] text-text-secondary leading-relaxed line-clamp-2">
+				{article.summary}
+			</p>
+			<span class="mt-2 inline-block text-sm font-semibold text-text underline">
+				더 보기
+			</span>
+		</div>
 	</a>
 </article>

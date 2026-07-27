@@ -112,8 +112,8 @@ async function processArticle(msg: QueueMessage, env: Env): Promise<void> {
 		// 요약 결과 저장
 		const articleId = crypto.randomUUID();
 		await env.DB.prepare(
-			`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at)
-			 SELECT ?, ?, ?, ?, r.title, ?, ?, ?, ?, ?, r.url, ?, COALESCE(r.published_at, datetime('now'))
+			`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at, image_url)
+			 SELECT ?, ?, ?, ?, r.title, ?, ?, ?, ?, ?, r.url, ?, COALESCE(r.published_at, datetime('now')), r.image_url
 			 FROM raw_articles r WHERE r.id = ?`,
 		)
 			.bind(

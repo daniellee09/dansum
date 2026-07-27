@@ -4,6 +4,7 @@ import { getArticle, getRelatedArticles } from "../../lib/api";
 import { renderEmphasis } from "../../lib/markdown";
 import { CATEGORY_LABELS, formatKoreanDate, formatRelativeTime } from "@dansum/shared";
 import type { Article, Category } from "@dansum/shared";
+import SourceIcon from "../../components/SourceIcon.astro";
 
 const { id } = Astro.params;
 
@@ -37,17 +38,23 @@ if (!article && !error) return Astro.redirect("/");
 			</a>
 		</div>
 	) : (
-		<article class="py-4">
+		<article class="rounded-lg border border-border bg-surface p-6 sm:p-8 my-2">
 			<!-- 메타 -->
-			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 text-sm">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-[15px]">
+				<SourceIcon
+					sourceId={article.sourceId}
+					sourceUrl={article.sourceUrl}
+					sourceName={article.sourceName}
+					size={30}
+				/>
+				<span class="font-bold text-text">{article.sourceName}</span>
+				<span class="text-text-secondary">&middot;</span>
 				<a
 					href={`/category/${article.category}`}
 					class="font-semibold text-accent hover:underline"
 				>
 					{CATEGORY_LABELS[article.category as Category] ?? article.category}
 				</a>
-				<span class="text-text-secondary">&middot;</span>
-				<span class="font-medium text-text-secondary">{article.sourceName}</span>
 				<span class="text-text-secondary">&middot;</span>
 				<span class="text-text-secondary">
 					{formatKoreanDate(article.publishedAt)}
@@ -64,7 +71,7 @@ if (!article && !error) return Astro.redirect("/");
 			</div>
 
 			<!-- 제목 -->
-			<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-6">
+			<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-5">
 				{article.title}
 			</h1>
 
@@ -74,12 +81,12 @@ if (!article && !error) return Astro.redirect("/");
 				</p>
 			)}
 
-			<!-- 요약: 신문 리드 문단처럼 왼쪽 강조선 + 넉넉한 행간으로 격상 -->
-			<div class="border-l-4 border-brand bg-surface/60 backdrop-blur-md rounded-r-2xl shadow-[0_8px_30px_rgba(2,6,23,0.05)] pl-5 pr-5 py-5 mb-8">
+			<!-- 요약 -->
+			<div class="rounded-md border border-border bg-surface-alt px-4 py-3 mb-6">
 				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
 					요약
 				</h2>
-				<p class="text-lg leading-loose">
+				<p class="text-lg leading-relaxed">
 					{article.summary}
 				</p>
 			</div>
@@ -93,7 +100,7 @@ if (!article && !error) return Astro.redirect("/");
 					{article.keyPoints.map((point) => (
 						<li class="flex items-start gap-3">
 							<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-							<span class="text-base leading-relaxed" set:html={renderEmphasis(point)} />
+							<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(point)} />
 						</li>
 					))}
 				</ul>
@@ -108,13 +115,13 @@ if (!article && !error) return Astro.redirect("/");
 					<div class="space-y-6">
 						{article.sections.map((s) => (
 							<div>
-								<h3 class="text-base font-bold mb-2">{s.heading}</h3>
+								<h3 class="text-lg font-bold mb-2">{s.heading}</h3>
 								<ul class="space-y-2">
 									{s.points.map((p) => (
 										<li>
 											<div class="flex items-start gap-3">
 												<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-												<span class="text-base leading-relaxed" set:html={renderEmphasis(p.text)} />
+												<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(p.text)} />
 											</div>
 											{p.children && p.children.length > 0 && (
 												<ul class="mt-1.5 ml-6 space-y-1.5">
@@ -122,7 +129,7 @@ if (!article && !error) return Astro.redirect("/");
 														<li class="flex items-start gap-2.5">
 															<span class="text-text-secondary text-xs leading-none mt-1.5">&#9702;</span>
 															<span
-																class="text-sm text-text-secondary leading-relaxed"
+																class="text-[15px] text-text-secondary leading-relaxed"
 																set:html={renderEmphasis(c)}
 															/>
 														</li>
@@ -142,7 +149,7 @@ if (!article && !error) return Astro.redirect("/");
 			{article.keywords.length > 0 && (
 				<div class="flex flex-wrap gap-2 mb-8">
 					{article.keywords.map((kw) => (
-						<span class="text-xs text-text-secondary bg-surface-alt px-2 py-1 rounded-full">
+						<span class="text-[13px] text-text-secondary bg-surface-alt px-2.5 py-1 rounded">
 							#{kw}
 						</span>
 					))}
@@ -159,11 +166,18 @@ if (!article && !error) return Astro.redirect("/");
 						{related.map((r) => (
 							<li>
 								<a href={`/article/${r.id}`} class="block py-3 group read-link">
-									<div class="flex items-center gap-2 mb-1 text-xs text-text-secondary">
-										<span class="font-semibold text-accent">{r.sourceName}</span>
-										<span>{formatRelativeTime(r.publishedAt)}</span>
+									<div class="flex items-center gap-x-2 mb-1.5 text-[13px] text-text-secondary">
+										<SourceIcon
+											sourceId={r.sourceId}
+											sourceUrl={r.sourceUrl}
+											sourceName={r.sourceName}
+											size={22}
+										/>
+										<span class="font-bold text-text">{r.sourceName}</span>
+										<span aria-hidden="true">·</span>
+										<time class="tabular-nums">{formatRelativeTime(r.publishedAt)}</time>
 									</div>
-									<p class="text-base font-semibold leading-snug group-hover:text-brand transition-colors">
+									<p class="text-[17px] font-semibold leading-snug group-hover:text-brand transition-colors">
 										{r.title}
 									</p>
 								</a>
@@ -178,7 +192,7 @@ if (!article && !error) return Astro.redirect("/");
 				<a
 					id="back-to-list"
 					href={`/category/${article.category}`}
-					class="text-sm font-medium text-text-secondary hover:text-text transition-colors"
+					class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
 				>
 					&larr; 목록으로
 				</a>
@@ -186,7 +200,7 @@ if (!article && !error) return Astro.redirect("/");
 					href={article.sourceUrl}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="text-sm font-medium text-brand hover:underline"
+					class="text-[15px] font-medium text-brand hover:underline"
 				>
 					원문 보기 &rarr;
 				</a>

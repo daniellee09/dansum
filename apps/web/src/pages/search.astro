@@ -23,9 +23,9 @@ if (q) {
 	description="단숨에서 경제 뉴스를 검색하세요"
 >
 	<section class="py-2">
-		<!-- 글래스 검색바 -->
+		<!-- 검색바 -->
 		<form action="/search" method="get" class="mb-6">
-			<div class="glass rounded-2xl flex items-center gap-3 px-4 py-3 transition-shadow focus-within:ring-2 focus-within:ring-brand/40">
+			<div class="border border-border rounded-full bg-surface-alt flex items-center gap-3 px-5 py-3.5 transition-shadow focus-within:ring-2 focus-within:ring-brand/40 focus-within:bg-surface">
 				<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<circle cx="11" cy="11" r="7" />
 					<path stroke-linecap="round" d="M21 21l-4.3-4.3" />
@@ -38,7 +38,7 @@ if (q) {
 					placeholder="키워드로 기사 검색"
 					autocomplete="off"
 					autofocus
-					class="w-full bg-transparent text-lg outline-none placeholder:text-text-secondary"
+					class="search-field w-full bg-transparent text-lg outline-none placeholder:text-text-secondary"
 				/>
 			</div>
 		</form>
@@ -63,7 +63,7 @@ if (q) {
 			<p class="py-12 text-center text-text-secondary">{error}</p>
 		) : articles && articles.total > 0 ? (
 			<>
-				<p class="text-sm text-text-secondary mb-3">
+				<p class="text-[15px] text-text-secondary mb-3">
 					<span class="font-bold text-text">'{q}'</span> 검색 결과 {articles.total}건
 				</p>
 				<ArticleList articles={articles.items} />
@@ -125,7 +125,7 @@ if (q) {
 			for (const term of items) {
 				const chip = document.createElement("span");
 				chip.className =
-					"inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/60 pl-3 pr-1.5 py-1 text-sm transition-colors hover:border-brand";
+					"inline-flex items-center gap-1.5 rounded-md border border-border bg-surface pl-3 pr-1.5 py-1 text-sm transition-colors hover:border-brand";
 				const a = document.createElement("a");
 				a.href = `/search?q=${encodeURIComponent(term)}`;
 				a.textContent = term;
