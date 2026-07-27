@@ -17,7 +17,7 @@ const { hasMore, category, query } = Astro.props;
 			data-next-page="2"
 			data-category={category ?? ""}
 			data-query={query ?? ""}
-			class="px-5 py-2.5 text-sm font-semibold text-text border border-border rounded-xl hover:bg-surface-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+			class="px-5 py-2 text-sm font-semibold text-text border border-border rounded-md bg-surface-alt hover:border-text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 		>
 			더 보기
 		</button>
@@ -27,45 +27,88 @@ const { hasMore, category, query } = Astro.props;
 <script>
 	import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
 	import type { Article } from "@dansum/shared";
+	import { getSourceMeta } from "../lib/source";
 
 	const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
+	// 주의: SourceIcon.astro와 마크업 중복 — 한쪽 수정 시 반드시 동기화
+	function renderSourceIcon(a: Article, size = 18): HTMLElement {
+		const { initial, color, iconUrl } = getSourceMeta(a.sourceId, a.sourceUrl, a.sourceName);
+		const wrap = document.createElement("span");
+		wrap.className =
+			"relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white leading-none";
+		wrap.style.cssText = `width:${size}px;height:${size}px;background-color:${color};font-size:${Math.round(size * 0.5)}px`;
+		wrap.setAttribute("aria-hidden", "true");
+		wrap.textContent = initial;
+		if (iconUrl) {
+			const img = document.createElement("img");
+			img.src = iconUrl;
+			img.alt = "";
+			img.loading = "lazy";
+			img.width = size;
+			img.height = size;
+			img.className = "absolute inset-0 h-full w-full object-cover";
+			img.addEventListener("error", () => img.remove());
+			wrap.appendChild(img);
+		}
+		return wrap;
+	}
+
+	// 주의: ArticleCard.astro와 마크업 중복 — 한쪽 수정 시 반드시 동기화
 	function renderCard(a: Article): HTMLElement {
 		const article = document.createElement("article");
-		article.className =
-			"group h-full flex flex-col rounded-2xl border border-border bg-surface/60 backdrop-blur-sm p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(2,6,23,0.07)]";
+		article.className = "group -mx-4 px-4 py-5 transition-colors hover:bg-surface-alt";
 
-		// 메타: 카테고리는 별도 링크라 본문 앵커 밖에 둠
-		const meta = document.createElement("div");
-		meta.className = "flex items-center gap-2 mb-1.5 text-xs";
+		// 헤더: 아이콘 + 매체명·카테고리 / 시간
+		const head = document.createElement("div");
+		head.className = "flex items-start gap-x-2.5";
+
+		const headText = document.createElement("div");
+		headText.className = "min-w-0 text-sm leading-tight";
+
+		const nameRow = document.createElement("div");
+		nameRow.className = "flex items-center gap-x-2";
+		const src = document.createElement("span");
+		src.className = "font-semibold text-text";
+		src.textContent = a.sourceName;
 		const cat = document.createElement("a");
 		cat.href = `/category/${a.category}`;
-		cat.className = "font-semibold text-accent hover:underline";
+		cat.className = "text-text-secondary hover:text-brand hover:underline";
 		cat.textContent =
 			(CATEGORY_LABELS as Record<string, string>)[a.category] ?? a.category;
-		const src = document.createElement("span");
-		src.className = "font-medium text-text-secondary";
-		src.textContent = a.sourceName;
-		const time = document.createElement("span");
-		time.className = "text-text-secondary";
+		nameRow.append(src, cat);
+
+		const time = document.createElement("time");
+		time.className = "mt-1 block text-[13px] text-text-secondary tabular-nums";
 		time.textContent = formatRelativeTime(a.publishedAt);
-		meta.append(cat, src, time);
+
+		headText.append(nameRow, time);
+		head.append(renderSourceIcon(a, 26), headText);
 
 		const link = document.createElement("a");
 		link.href = `/article/${a.id}`;
-		link.className = "block read-link";
+		link.className = "block read-link mt-3.5";
 
 		const h2 = document.createElement("h2");
 		h2.className =
-			"text-lg font-bold leading-snug tracking-tight mb-1 group-hover:text-brand transition-colors";
+			"text-xl font-semibold leading-snug group-hover:text-brand transition-colors";
 		h2.textContent = a.title;
 
+		// 요약: 칸 안쪽 중첩 패널
+		const panel = document.createElement("div");
+		panel.className =
+			"mt-3 rounded-md border border-border bg-surface-alt group-hover:bg-surface transition-colors px-4 py-3.5";
 		const p = document.createElement("p");
-		p.className = "text-sm text-text-secondary leading-relaxed line-clamp-2";
+		p.className = "text-[15px] text-text-secondary leading-relaxed line-clamp-2";
 		p.textContent = a.summary;
+		const more = document.createElement("span");
+		more.className = "mt-2 inline-block text-sm font-semibold text-text underline";
+		more.textContent = "더 보기";
+		panel.append(p, more);
 
-		link.append(h2, p);
-		article.append(meta, link);
+		link.append(h2, panel);
+
+		article.append(head, link);
 		return article;
 	}
 

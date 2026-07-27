@@ -22,6 +22,8 @@ export interface RawArticle {
 	description: string | null;
 	author: string | null;
 	publishedAt: string | null;
+	/** 대표 이미지 URL(RSS 또는 og:image). 없으면 null */
+	imageUrl: string | null;
 	status: "pending" | "processing" | "completed" | "failed";
 	retryCount: number;
 	createdAt: string;
@@ -59,6 +61,8 @@ export interface Article {
 	keywords: string[];
 	sourceUrl: string;
 	sourceName: string;
+	/** 대표 이미지 URL(RSS 또는 og:image). 없으면 null */
+	imageUrl: string | null;
 	publishedAt: string;
 	summarizedAt: string;
 	createdAt: string;

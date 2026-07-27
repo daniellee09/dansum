@@ -3,43 +3,48 @@
 /* dark: 유틸리티를 OS 설정이 아닌 .dark 클래스 토글에 연동 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* GitHub Primer 라이트 팔레트 */
 @theme {
-	--color-primary: #1a1a2e;
-	--color-accent: #374151;
-	/* 소프트 블루 포인트(앰비언트/글래스 분위기와 조화) */
-	--color-brand: #4f7ef7;
-	/* "급상승/NEW" 강조용 소프트 코랄(쨍한 빨강 대신 톤다운, iOS식 틴트 캡슐) */
-	--color-hot: #ef6147;
+	--color-primary: #1f2328;
+	--color-accent: #59636e;
+	/* GitHub 링크 블루 */
+	--color-brand: #0969da;
+	/* "급상승/NEW" 강조용 레드 */
+	--color-hot: #cf222e;
+	/* 페이지 배경 / 카드 표면 / 카드 안쪽 중첩 패널 */
+	--color-bg: #ffffff;
 	--color-surface: #ffffff;
-	--color-surface-alt: #f8f9fa;
-	--color-text: #1a1a2e;
-	--color-text-secondary: #6b7280;
-	--color-border: #e5e7eb;
+	--color-surface-alt: #f6f8fa;
+	--color-text: #1f2328;
+	--color-text-secondary: #59636e;
+	--color-border: #d1d9e0;
 
 	--font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+	--font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
 html {
 	font-family: var(--font-sans);
 	color: var(--color-text);
-	background-color: var(--color-surface);
+	background-color: var(--color-bg);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
 
-/* 다크 모드: 완전한 검정 대신 약간 짙은 회색 */
+/* 다크 모드: GitHub Primer 다크 — 카드는 배경과 같은 톤이고 테두리로 구분된다 */
 html.dark {
-	--color-primary: #f1f5f9;
-	--color-accent: #94a3b8;
-	/* 어두운 배경 대비 위해 밝은 소프트 블루 */
-	--color-brand: #8ab4ff;
-	/* 어두운 배경용 밝은 코랄 */
-	--color-hot: #ff9d88;
-	--color-surface: #1e2024;
-	--color-surface-alt: #282b30;
-	--color-text: #f1f5f9;
-	--color-text-secondary: #9ca3af;
-	--color-border: #383b41;
+	--color-primary: #f0f6fc;
+	--color-accent: #9198a1;
+	/* 어두운 배경 대비 위해 밝은 링크 블루 */
+	--color-brand: #4493f8;
+	/* 어두운 배경용 밝은 레드 */
+	--color-hot: #f85149;
+	--color-bg: #0d1117;
+	--color-surface: #0d1117;
+	--color-surface-alt: #151b23;
+	--color-text: #f0f6fc;
+	--color-text-secondary: #9198a1;
+	--color-border: #3d444d;
 }
 
 /* 드래그 선택색을 브랜드색으로(은은하게) */
@@ -54,53 +59,75 @@ html.dark {
 	border-radius: 4px;
 }
 
-/* 앰비언트 배경: 옅은 블루-라벤더 워시 + 흐릿한 컬러 오브(고정, 콘텐츠 뒤). 텍스트 영역은 거의 흰색 유지 */
-.ambient {
-	position: fixed;
-	inset: 0;
-	z-index: -10;
-	pointer-events: none;
-	background:
-		radial-gradient(42rem 30rem at 10% -6%, color-mix(in oklab, #6366f1 13%, transparent), transparent 60%),
-		radial-gradient(38rem 26rem at 104% 6%, color-mix(in oklab, #38bdf8 13%, transparent), transparent 60%),
-		radial-gradient(42rem 30rem at 50% 116%, color-mix(in oklab, #a78bfa 11%, transparent), transparent 60%),
-		linear-gradient(180deg, #f4f6ff 0%, #ffffff 42%);
+/* 알약형 검색창: 감싼 래퍼가 focus-within으로 포커스를 표시하므로
+   입력 요소의 사각 아웃라인은 끈다(모서리가 어긋나 보이는 것 방지). */
+.search-field:focus-visible {
+	outline: none;
 }
 
-html.dark .ambient {
-	background:
-		radial-gradient(42rem 30rem at 10% -6%, color-mix(in oklab, #6366f1 24%, transparent), transparent 60%),
-		radial-gradient(38rem 26rem at 104% 6%, color-mix(in oklab, #22d3ee 16%, transparent), transparent 60%),
-		radial-gradient(42rem 30rem at 50% 116%, color-mix(in oklab, #a78bfa 16%, transparent), transparent 60%),
-		linear-gradient(180deg, #181a20 0%, #1e2024 42%);
+/* ── 헤더 + 사이드바 레이아웃 ────────────────────────────────
+   헤더는 전폭으로 맨 위에 고정되고, 사이드바는 그 아래에서 시작한다(레딧식).
+   데스크톱(lg+): 사이드바 기본 고정(도킹) → 본문을 사이드바 폭만큼 밀어낸다.
+     html.sidebar-collapsed 면 접어서 본문이 전폭을 쓴다.
+   모바일: 항상 오버레이 드로어. html.sidebar-open 일 때만 열린다.
+   상태 클래스는 <head> 인라인 스크립트가 미리 붙여 깜빡임을 막는다. */
+:root {
+	--sidebar-w: 280px;
+	--header-h: 60px;
 }
 
-/* 글래스모피즘 표면: 반투명 + 블러 + 옅은 테두리 + 소프트 그림자 (프레임된 표면에만 선별 적용) */
-.glass {
-	background-color: color-mix(in oklab, var(--color-surface) 68%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid color-mix(in oklab, #ffffff 55%, transparent);
-	box-shadow: 0 10px 34px rgba(2, 6, 23, 0.06);
+#app-header {
+	height: var(--header-h);
 }
 
-html.dark .glass {
-	border-color: color-mix(in oklab, #ffffff 10%, transparent);
-	box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+#app-sidebar,
+#sidebar-overlay {
+	top: var(--header-h);
 }
 
-/* 활성 네비 칩: 뒤 배경이 비치는 단순 투명 버튼(프로스티드 + 테두리만).
-   하이라이트·inset·드롭그림자 없음 — 블러로 배경을 비추고 테두리로 선택 상태를 정의. */
-.nav-glass {
-	background-color: color-mix(in oklab, var(--color-surface) 30%, transparent);
-	backdrop-filter: blur(8px) saturate(140%);
-	-webkit-backdrop-filter: blur(8px) saturate(140%);
-	border: 1px solid var(--color-border);
+#app-sidebar {
+	width: var(--sidebar-w);
+	transform: translateX(-100%);
 }
 
-html.dark .nav-glass {
-	background-color: color-mix(in oklab, #ffffff 8%, transparent);
-	border-color: color-mix(in oklab, #ffffff 16%, transparent);
+.app-shell {
+	min-height: calc(100vh - var(--header-h));
+}
+
+@media (min-width: 1024px) {
+	.app-shell {
+		padding-left: var(--sidebar-w);
+	}
+	#app-sidebar {
+		transform: none;
+	}
+	/* 데스크톱에선 배경 딤을 쓰지 않는다(본문이 그대로 보여야 함) */
+	#sidebar-overlay {
+		display: none;
+	}
+	html.sidebar-collapsed .app-shell {
+		padding-left: 0;
+	}
+	html.sidebar-collapsed #app-sidebar {
+		transform: translateX(-100%);
+	}
+}
+
+@media (max-width: 1023px) {
+	html.sidebar-open #app-sidebar {
+		transform: none;
+	}
+	html.sidebar-open #sidebar-overlay {
+		opacity: 1;
+		pointer-events: auto;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#app-sidebar,
+	.app-shell {
+		transition: none !important;
+	}
 }
 
 /* 다크모드 토글 시에만 일시적으로 색 전환을 부드럽게(초기 로드·호버엔 영향 없음) */
@@ -162,7 +189,7 @@ a.read-link:visited :is(h2, h3, p) {
 
 /* 타이포그래피 최적화 */
 body {
-	line-height: 1.7;
+	line-height: 1.55;
 	letter-spacing: -0.01em;
 	word-break: keep-all;
 	overflow-wrap: break-word;

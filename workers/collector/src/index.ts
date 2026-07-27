@@ -91,6 +91,7 @@ interface Candidate {
 	description: string | null;
 	author: string | null;
 	publishedAt: string | null;
+	imageUrl: string | null;
 }
 
 async function collectNews(env: Env): Promise<void> {
@@ -130,8 +131,8 @@ async function collectNews(env: Env): Promise<void> {
 	const stmts = [
 		...fresh.map((c) =>
 			env.DB.prepare(
-				`INSERT OR IGNORE INTO raw_articles (id, source_id, url, url_hash, title, description, author, published_at, status)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+				`INSERT OR IGNORE INTO raw_articles (id, source_id, url, url_hash, title, description, author, published_at, image_url, status)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
 			).bind(
 				crypto.randomUUID(),
 				c.sourceId,
@@ -141,6 +142,7 @@ async function collectNews(env: Env): Promise<void> {
 				c.description,
 				c.author,
 				c.publishedAt,
+				c.imageUrl,
 			),
 		),
 		...okSourceIds.map((id) =>
@@ -179,6 +181,7 @@ async function fetchSourceItems(
 			description: item.description ?? null,
 			author: item.author ?? null,
 			publishedAt: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+			imageUrl: item.imageUrl ?? null,
 		});
 	}
 	return out;
