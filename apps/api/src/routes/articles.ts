@@ -19,6 +19,9 @@ articles.get("/", async (c) => {
 	const category = c.req.query("category");
 	const source = c.req.query("source");
 	const q = c.req.query("q");
+	// 생략하면 undefined로 둬야 검색(q)일 때 관련도순(기본)이 유지된다.
+	const sortParam = c.req.query("sort");
+	const sort = sortParam === "hot" || sortParam === "latest" ? sortParam : undefined;
 
 	const result = await getArticles(c.env.DB, {
 		page,
@@ -26,6 +29,7 @@ articles.get("/", async (c) => {
 		category,
 		source,
 		q,
+		sort,
 	});
 
 	return c.json({ success: true, data: result });

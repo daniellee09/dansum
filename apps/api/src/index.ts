@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { articles } from "./routes/articles.js";
 import { categories } from "./routes/categories.js";
 import { top } from "./routes/top.js";
+import { hot } from "./routes/hot.js";
 import { kvCache } from "./middleware/cache.js";
 
 interface Env {
@@ -25,6 +26,7 @@ app.use("/api/*", kvCache());
 app.route("/api/articles", articles);
 app.route("/api/categories", categories);
 app.route("/api/top", top);
+app.route("/api/hot", hot);
 
 // 헬스체크
 app.get("/", (c) => {

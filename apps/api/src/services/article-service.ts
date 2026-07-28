@@ -73,6 +73,27 @@ function escapeLike(s: string): string {
 	return s.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
+// 검색어: 공백으로 토큰 분리 → 각 토큰이 (여러 필드 중 어디든) 모두 들어간 기사만(토큰 간 AND).
+// 단순 부분일치의 "여러 단어 = 한 덩어리로만 매칭" 문제를 해결한다.
+const SEARCH_FIELDS = ["title", "original_title", "summary", "keywords", "sections", "key_points"];
+
+/** 검색어 q를 WHERE 조건(토큰 간 AND, 필드 간 OR)으로 변환. getArticles(관련도순)와
+ *  getArticlesHot(검색 결과 내 인기순)이 공유한다. */
+function buildSearchConditions(q: string): { conditions: string[]; bindings: unknown[] } {
+	const conditions: string[] = [];
+	const bindings: unknown[] = [];
+	const terms = q.split(/\s+/).filter(Boolean).slice(0, 6);
+
+	for (const term of terms) {
+		const like = `%${escapeLike(term)}%`;
+		const ors = SEARCH_FIELDS.map((f) => `${f} LIKE ? ESCAPE '\\'`).join(" OR ");
+		conditions.push(`(${ors})`);
+		for (let i = 0; i < SEARCH_FIELDS.length; i++) bindings.push(like);
+	}
+
+	return { conditions, bindings };
+}
+
 export async function getArticles(
 	db: D1Database,
 	options: {
@@ -82,11 +103,25 @@ export async function getArticles(
 		/** 매체 필터(sources.id). 목록의 매체명을 눌렀을 때 쓴다 */
 		source?: string;
 		q?: string;
+		/** "hot" = 보도량 기반 인기순, "latest" = 최신순. 검색(q)에서 생략하면 관련도순(기본) */
+		sort?: "latest" | "hot";
 	},
 ) {
 	const page = options.page ?? 1;
 	const pageSize = Math.min(options.pageSize ?? DEFAULT_PAGE_SIZE, 50);
 	const offset = (page - 1) * pageSize;
+	const q = options.q?.trim();
+
+	if (options.sort === "hot") {
+		return getArticlesHot(db, {
+			page,
+			pageSize,
+			offset,
+			category: options.category,
+			source: options.source,
+			q,
+		});
+	}
 
 	const conditions: string[] = [];
 	const bindings: unknown[] = [];
@@ -101,16 +136,6 @@ export async function getArticles(
 		bindings.push(options.source);
 	}
 
-	// 검색어: 공백으로 토큰 분리 → 각 토큰이 (여러 필드 중 어디든) 모두 들어간 기사만(토큰 간 AND).
-	// 단순 부분일치의 "여러 단어 = 한 덩어리로만 매칭" 문제를 해결한다.
-	const SEARCH_FIELDS = [
-		"title",
-		"original_title",
-		"summary",
-		"keywords",
-		"sections",
-		"key_points",
-	];
 	// 관련도 가중치(필드별). 제목 매칭이 가장 강한 신호.
 	const FIELD_WEIGHT: Record<string, number> = {
 		title: 4,
@@ -121,22 +146,16 @@ export async function getArticles(
 		key_points: 1,
 	};
 
-	const q = options.q?.trim();
 	const relevanceBindings: unknown[] = [];
 	let relevanceExpr = "";
 
 	if (q) {
-		const terms = q.split(/\s+/).filter(Boolean).slice(0, 6);
-
-		// 필터: 각 토큰이 어느 한 필드라도 포함(토큰 간 AND)
-		for (const term of terms) {
-			const like = `%${escapeLike(term)}%`;
-			const ors = SEARCH_FIELDS.map((f) => `${f} LIKE ? ESCAPE '\\'`).join(" OR ");
-			conditions.push(`(${ors})`);
-			for (let i = 0; i < SEARCH_FIELDS.length; i++) bindings.push(like);
-		}
+		const search = buildSearchConditions(q);
+		conditions.push(...search.conditions);
+		bindings.push(...search.bindings);
 
 		// 관련도 점수: 제목에 전체 문구가 그대로면 보너스 + 토큰×필드 가중 합
+		const terms = q.split(/\s+/).filter(Boolean).slice(0, 6);
 		const relParts: string[] = [
 			"CASE WHEN title LIKE ? ESCAPE '\\' THEN 20 ELSE 0 END",
 		];
@@ -165,10 +184,14 @@ export async function getArticles(
 
 	const total = countResult?.total ?? 0;
 
-	// 목록: 검색 시 관련도 DESC→최신순, 일반 목록은 최신순.
+	// 목록: 검색 시 기본은 관련도 DESC→최신순(sort=latest면 최신순만), 일반 목록은 최신순.
 	// SELECT 절(관련도)이 SQL에서 먼저 나오므로 relevanceBindings를 앞에 바인딩.
 	const selectCols = q ? `*, (${relevanceExpr}) AS _rel` : "*";
-	const orderBy = q ? "_rel DESC, published_at DESC" : "published_at DESC";
+	const orderBy = q
+		? options.sort === "latest"
+			? "published_at DESC"
+			: "_rel DESC, published_at DESC"
+		: "published_at DESC";
 
 	const rows = await db
 		.prepare(
@@ -256,6 +279,148 @@ const CANDIDATE_WINDOW_HOURS = 30;
 // 작을수록 "오늘" 강조(옛 이슈가 상단에서 더 빨리 밀림).
 const SCORE_HALF_LIFE_HOURS = 16;
 
+interface CoverageCluster {
+	keywordSet: Set<string>;
+	members: Article[];
+	sourceIds: Set<string>;
+	/** 보도량(매체 수) × 신선도 감쇠. 많은 매체가 다룰수록 ↑, 오래될수록 완만히 ↓.
+	 *  보도량을 곱셈 계수로 둬 단독(1매체)이 신선하다고 상위를 점령하진 않음. */
+	score: number;
+}
+
+/**
+ * 키워드 공유 기반 클러스터링 + 점수 산출. "오늘의 주요 뉴스"(getTopClusters)와
+ * 인기순 정렬(getArticlesHot)이 공유하는 핵심 로직.
+ * articles는 최신순(published_at DESC)이어야 각 클러스터의 첫 멤버가 대표(lead)가 된다.
+ */
+function buildCoverageClusters(articles: Article[], nowMs: number): CoverageCluster[] {
+	const MIN_SHARED = 2; // 같은 사건으로 보려면 최소 2개 키워드 공유
+	const clusters: Omit<CoverageCluster, "score">[] = [];
+
+	for (const article of articles) {
+		const kw = new Set(article.keywords.map(normalizeKeyword).filter(Boolean));
+		let placed = false;
+		if (kw.size > 0) {
+			for (const cluster of clusters) {
+				if (sharedCount(kw, cluster.keywordSet) >= MIN_SHARED) {
+					cluster.members.push(article);
+					cluster.sourceIds.add(article.sourceId);
+					for (const k of kw) cluster.keywordSet.add(k);
+					placed = true;
+					break;
+				}
+			}
+		}
+		if (!placed) {
+			clusters.push({
+				keywordSet: kw,
+				members: [article],
+				sourceIds: new Set([article.sourceId]),
+			});
+		}
+	}
+
+	return clusters.map((c) => ({
+		...c,
+		score: c.sourceIds.size * 0.5 ** (hoursSince(c.members[0].publishedAt, nowMs) / SCORE_HALF_LIFE_HOURS),
+	}));
+}
+
+/** 기사 배열을 보도량 점수(buildCoverageClusters) 내림차순으로 정렬(동점은 최신순).
+ *  getArticlesHot·getHotArticles가 공유한다. */
+function sortByHotness(articles: Article[], nowMs: number): Article[] {
+	const clusters = buildCoverageClusters(articles, nowMs);
+	const scoreById = new Map<string, number>();
+	for (const c of clusters) {
+		for (const m of c.members) scoreById.set(m.id, c.score);
+	}
+	return [...articles].sort((a, b) => {
+		const sa = scoreById.get(a.id) ?? 0;
+		const sb = scoreById.get(b.id) ?? 0;
+		if (sb !== sa) return sb - sa;
+		return b.publishedAt.localeCompare(a.publishedAt);
+	});
+}
+
+/**
+ * 인기순(sort=hot) 정렬 목록. getTopClusters와 동일한 후보 시간창·점수 로직을 재사용하되,
+ * 카테고리/매체/검색어(q) 필터를 적용하고 페이지네이션한다. 검색과 함께 쓰이면 "검색 결과 중
+ * 여러 매체가 다룬 최근 이슈"가 상위로 온다. 인기순은 최근 이슈에서만 의미가 있으므로
+ * 후보 시간창(CANDIDATE_WINDOW_HOURS) 밖의 과거 기사는 다루지 않는다(레딧의 "Top: today"와 유사).
+ */
+async function getArticlesHot(
+	db: D1Database,
+	opts: {
+		page: number;
+		pageSize: number;
+		offset: number;
+		category?: string;
+		source?: string;
+		q?: string;
+	},
+) {
+	const conditions: string[] = [`published_at >= datetime('now', ?)`];
+	const bindings: unknown[] = [`-${CANDIDATE_WINDOW_HOURS} hours`];
+
+	if (opts.category) {
+		conditions.push("category = ?");
+		bindings.push(opts.category);
+	}
+	if (opts.source) {
+		conditions.push("source_id = ?");
+		bindings.push(opts.source);
+	}
+	if (opts.q) {
+		const search = buildSearchConditions(opts.q);
+		conditions.push(...search.conditions);
+		bindings.push(...search.bindings);
+	}
+
+	const rows = await db
+		.prepare(
+			`SELECT * FROM articles WHERE ${conditions.join(" AND ")} ORDER BY published_at DESC LIMIT 300`,
+		)
+		.bind(...bindings)
+		.all<ArticleRow>();
+
+	const articles = rows.results.map(rowToArticle);
+	const sorted = sortByHotness(articles, Date.now());
+
+	const total = sorted.length;
+	const items = sorted.slice(opts.offset, opts.offset + opts.pageSize);
+
+	return {
+		items,
+		total,
+		page: opts.page,
+		pageSize: opts.pageSize,
+		hasMore: opts.offset + opts.pageSize < total,
+	};
+}
+
+// "Hot!" 사이드바 전용 시간창: sort=hot 목록(CANDIDATE_WINDOW_HOURS=30h)과 달리
+// "하루 기준"을 그대로 반영해 정확히 24시간으로 고정한다.
+const HOT_ARTICLES_WINDOW_HOURS = 24;
+
+/**
+ * "Hot!" — 최근 24시간(하루) 안에서 보도량 점수가 가장 높은 개별 기사 상위 limit개.
+ * getArticlesHot과 달리 필터·페이지네이션이 없는 고정 스냅샷이고, 캐시도 안 쓴다
+ * (middleware/cache.ts에서 /api/hot을 캐시 대상에서 제외 — 방문할 때마다 최신 상태를 보여줘야 해서).
+ */
+export async function getHotArticles(db: D1Database, limit = 50): Promise<Article[]> {
+	const rows = (
+		await db
+			.prepare(
+				`SELECT * FROM articles WHERE published_at >= datetime('now', ?) ORDER BY published_at DESC LIMIT 300`,
+			)
+			.bind(`-${HOT_ARTICLES_WINDOW_HOURS} hours`)
+			.all<ArticleRow>()
+	).results;
+
+	const articles = rows.map(rowToArticle);
+	return sortByHotness(articles, Date.now()).slice(0, limit);
+}
+
 /**
  * "오늘의 주요 뉴스" — 최근 시간창 안에서 보도량(매체 수) 기반.
  * 같은 사건을 키워드 중복으로 묶고, 그 사건을 보도한 distinct source 수로 순위(동률은 최신순).
@@ -288,48 +453,10 @@ export async function getTopClusters(
 	}
 
 	const articles = rows.map(rowToArticle);
-
-	const MIN_SHARED = 2; // 같은 사건으로 보려면 최소 2개 키워드 공유
-	interface Cluster {
-		keywordSet: Set<string>;
-		members: Article[];
-		sourceIds: Set<string>;
-	}
-	const clusters: Cluster[] = [];
-
-	// 최신순으로 그리디 병합 → 첫 멤버가 대표(lead)
-	for (const article of articles) {
-		const kw = new Set(article.keywords.map(normalizeKeyword).filter(Boolean));
-		let placed = false;
-		if (kw.size > 0) {
-			for (const cluster of clusters) {
-				if (sharedCount(kw, cluster.keywordSet) >= MIN_SHARED) {
-					cluster.members.push(article);
-					cluster.sourceIds.add(article.sourceId);
-					for (const k of kw) cluster.keywordSet.add(k);
-					placed = true;
-					break;
-				}
-			}
-		}
-		if (!placed) {
-			clusters.push({
-				keywordSet: kw,
-				members: [article],
-				sourceIds: new Set([article.sourceId]),
-			});
-		}
-	}
-
-	// 점수 = 보도량(매체 수) × 신선도 감쇠. 많은 매체가 다룰수록 ↑, 단 오래되면 완만히 감쇠해
-	// "어제 많이 보도된 이슈"가 상단에 고착되지 않게 한다.
-	// 보도량을 곱셈 계수로 둬 단독(1매체)이 신선하다고 상위를 점령하진 않음.
-	// 클러스터 나이 = 대표(가장 최신) 기사의 경과 시간.
 	const nowMs = Date.now();
-	const score = (c: (typeof clusters)[number]): number =>
-		c.sourceIds.size * 0.5 ** (hoursSince(c.members[0].publishedAt, nowMs) / SCORE_HALF_LIFE_HOURS);
+	const clusters = buildCoverageClusters(articles, nowMs);
 
-	const scored = clusters.map((c) => ({ c, s: score(c) }));
+	const scored = clusters.map((c) => ({ c, s: c.score }));
 	scored.sort((a, b) => {
 		if (b.s !== a.s) return b.s - a.s;
 		return b.c.members[0].publishedAt.localeCompare(a.c.members[0].publishedAt);
