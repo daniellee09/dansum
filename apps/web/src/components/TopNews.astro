@@ -11,15 +11,16 @@ const { clusters } = Astro.props;
 ---
 
 {clusters.length > 0 && (
-	<section class="mb-6 rounded-lg border border-border bg-surface px-5 py-4">
+	<section class="mb-6">
 		<!-- 섹션 헤더 -->
-		<div class="mb-2">
+		<div class="mb-3">
 			<h2 class="text-lg font-bold tracking-tight">오늘의 주요 뉴스</h2>
 			<p class="text-[13px] text-text-secondary mt-1">여러 매체가 함께 보도한 이슈</p>
 		</div>
 
-		<!-- -mx-3 px-3: 자식 li의 호버 확장 폭과 구분선 폭을 맞춘다 -->
-		<ol class="-mx-3 px-3 divide-y divide-border">
+		<!-- 최신 뉴스 목록과 동일한 방식: 감싸는 박스 없이 위쪽 구분선 + 항목 사이 구분선만.
+		     -mx-3 px-3: 자식 li의 호버 확장 폭과 구분선 폭을 맞춘다 -->
+		<ol class="-mx-3 px-3 divide-y divide-border border-t border-border">
 			{clusters.map((cluster, i) => {
 				const a = cluster.lead;
 				const rc = cluster.rankChange;

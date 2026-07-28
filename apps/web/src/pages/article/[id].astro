@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getArticle, getRelatedArticles } from "../../lib/api";
+import { getArticle, getArticles, getRelatedArticles } from "../../lib/api";
 import { renderEmphasis } from "../../lib/markdown";
 import { CATEGORY_LABELS, formatKoreanDate, formatRelativeTime } from "@dansum/shared";
 import type { Article, Category } from "@dansum/shared";
@@ -12,12 +12,19 @@ if (!id) return Astro.redirect("/");
 
 let article: Awaited<ReturnType<typeof getArticle>> | null = null;
 let related: Article[] = [];
+let sourceRecent: Article[] = [];
+let sourceTotal: number | null = null;
 let error: string | null = null;
 
 try {
 	article = await getArticle(id);
-	// 관련 보도는 실패해도 본문 렌더는 유지
+	// 사이드바 항목은 실패해도 본문 렌더는 유지
 	related = await getRelatedArticles(id).catch(() => []);
+	const sourceArticles = await getArticles({ source: article.sourceId, pageSize: 6 }).catch(
+		() => null,
+	);
+	sourceRecent = (sourceArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4);
+	sourceTotal = sourceArticles?.total ?? null;
 } catch (e) {
 	error = e instanceof Error ? e.message : "Failed to load article";
 }
@@ -27,6 +34,7 @@ if (!article && !error) return Astro.redirect("/");
 
 <BaseLayout
 	type="article"
+	wide
 	title={article ? `${article.title} - 단숨` : "기사를 찾을 수 없습니다"}
 	description={article?.summary}
 >
@@ -38,204 +46,272 @@ if (!article && !error) return Astro.redirect("/");
 			</a>
 		</div>
 	) : (
-		<article class="rounded-lg border border-border bg-surface p-6 sm:p-8 my-2">
-			<!-- 메타 -->
-			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-[15px]">
-				<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
-					<SourceIcon
-						sourceId={article.sourceId}
-						sourceUrl={article.sourceUrl}
-						sourceName={article.sourceName}
-						size={30}
-					/>
-				</a>
-				<a
-					href={`/source/${article.sourceId}`}
-					class="font-bold text-text hover:text-brand hover:underline"
-				>
-					{article.sourceName}
-				</a>
-				<span class="text-text-secondary">&middot;</span>
-				<a
-					href={`/category/${article.category}`}
-					class="font-semibold text-accent hover:text-brand hover:underline"
-				>
-					{CATEGORY_LABELS[article.category as Category] ?? article.category}
-				</a>
-				<span class="text-text-secondary">&middot;</span>
-				<span class="text-text-secondary">
-					{formatKoreanDate(article.publishedAt)}
-				</span>
-				<span class="text-text-secondary">&middot;</span>
-				<a
-					href={article.sourceUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="font-medium text-brand hover:underline"
-				>
-					원문 &nearr;
-				</a>
-			</div>
+		<!-- 사이드바 폭(20rem) 만큼을 좌우 대칭으로 확보해야 본문이 항상 헤더 검색창과
+		     같은 세로 중심선에 놓인다(사이드바만큼 오른쪽으로 치우치지 않게 왼쪽에 빈 칸을 둔다).
+		     좁은 화면(min-[87.5rem] 미만)에서는 그리드를 끄고 본문 아래로 사이드바가 자연스럽게 쌓인다. -->
+		<div class="min-[87.5rem]:grid min-[87.5rem]:grid-cols-[20rem_minmax(0,42rem)_20rem] min-[87.5rem]:gap-x-8">
+			<div class="hidden min-[87.5rem]:block" aria-hidden="true"></div>
+			<article class="min-w-0">
+				<!-- 메타 -->
+				<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-[15px]">
+					<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
+						<SourceIcon
+							sourceId={article.sourceId}
+							sourceUrl={article.sourceUrl}
+							sourceName={article.sourceName}
+							size={30}
+						/>
+					</a>
+					<a
+						href={`/source/${article.sourceId}`}
+						class="font-bold text-text hover:text-brand hover:underline"
+					>
+						{article.sourceName}
+					</a>
+					<span class="text-text-secondary">&middot;</span>
+					<a
+						href={`/category/${article.category}`}
+						class="font-semibold text-accent hover:text-brand hover:underline"
+					>
+						{CATEGORY_LABELS[article.category as Category] ?? article.category}
+					</a>
+					<span class="text-text-secondary">&middot;</span>
+					<span class="text-text-secondary">
+						{formatKoreanDate(article.publishedAt)}
+					</span>
+					<span class="text-text-secondary">&middot;</span>
+					<a
+						href={article.sourceUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="font-medium text-brand hover:underline"
+					>
+						원문 &nearr;
+					</a>
+				</div>
 
-			<!-- 제목 -->
-			<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-5">
-				{article.title}
-			</h1>
+				<!-- 제목 -->
+				<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-5">
+					{article.title}
+				</h1>
 
-			{article.originalTitle && article.originalTitle !== article.title && (
-				<p class="text-sm text-text-secondary mb-6 italic">
-					원문: {article.originalTitle}
-				</p>
-			)}
+				{article.originalTitle && article.originalTitle !== article.title && (
+					<p class="text-sm text-text-secondary mb-6 italic">
+						원문: {article.originalTitle}
+					</p>
+				)}
 
-			<!-- 대표 이미지: 제목 바로 아래. 목록과 같은 규칙(원본 크기 유지, 확대하지 않음)이되
-			     상세는 조금 더 크게 허용한다. 원본에 이미지가 없는 기사는 이 블록이 통째로 빠진다. -->
-			{article.imageUrl && (
-				<figure class="mb-6 overflow-hidden rounded-md border border-border bg-surface-alt">
-					<img
-						src={article.imageUrl}
-						alt={article.title}
-						loading="eager"
-						decoding="async"
-						referrerpolicy="no-referrer"
-						class="mx-auto block max-h-[440px] max-w-full object-contain"
-						onerror="this.closest('figure').remove()"
-					/>
-				</figure>
-			)}
+				<!-- 대표 이미지: 제목 바로 아래. 목록과 같은 규칙(원본 크기 유지, 확대하지 않음)이되
+				     상세는 조금 더 크게 허용한다. 원본에 이미지가 없는 기사는 이 블록이 통째로 빠진다. -->
+				{article.imageUrl && (
+					<figure class="mb-6 overflow-hidden rounded-md border border-border bg-surface-alt">
+						<img
+							src={article.imageUrl}
+							alt={article.title}
+							loading="eager"
+							decoding="async"
+							referrerpolicy="no-referrer"
+							class="mx-auto block max-h-[440px] max-w-full object-contain"
+							onerror="this.closest('figure').remove()"
+						/>
+					</figure>
+				)}
 
-			<!-- 요약 -->
-			<div class="rounded-md border border-border bg-surface-alt px-4 py-3 mb-6">
-				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
-					요약
-				</h2>
-				<p class="text-lg leading-relaxed">
-					{article.summary}
-				</p>
-			</div>
+				<!-- 요약 -->
+				<div class="rounded-md border border-border bg-surface-alt px-4 py-3 mb-6">
+					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+						요약
+					</h2>
+					<p class="text-lg leading-relaxed">
+						{article.summary}
+					</p>
+				</div>
 
-			<!-- 핵심 포인트(TL;DR): 이것만 읽어도 기사를 파악할 수 있는 블록이라 본문 정리보다 앞에 둔다 -->
-			<div class="mb-8">
-				<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
-					핵심 포인트
-				</h2>
-				<ul class="space-y-3">
-					{article.keyPoints.map((point) => (
-						<li class="flex items-start gap-3">
-							<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-							<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(point)} />
-						</li>
-					))}
-				</ul>
-			</div>
-
-			<!-- 주요 내용(구조화 정리: 소제목 + 최대 2단 불릿) -->
-			{(article.sections ?? []).length > 0 && (
+				<!-- 핵심 포인트(TL;DR): 이것만 읽어도 기사를 파악할 수 있는 블록이라 본문 정리보다 앞에 둔다 -->
 				<div class="mb-8">
 					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
-						주요 내용
+						핵심 포인트
 					</h2>
-					<div class="space-y-6">
-						{article.sections.map((s) => (
-							<div>
-								<h3 class="text-lg font-bold mb-2">{s.heading}</h3>
-								<ul class="space-y-2">
-									{s.points.map((p) => (
-										<li>
-											<div class="flex items-start gap-3">
-												<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
-												<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(p.text)} />
-											</div>
-											{p.children && p.children.length > 0 && (
-												<ul class="mt-1.5 ml-6 space-y-1.5">
-													{p.children.map((c) => (
-														<li class="flex items-start gap-2.5">
-															<span class="text-text-secondary text-xs leading-none mt-1.5">&#9702;</span>
-															<span
-																class="text-[15px] text-text-secondary leading-relaxed"
-																set:html={renderEmphasis(c)}
-															/>
-														</li>
-													))}
-												</ul>
-											)}
-										</li>
-									))}
-								</ul>
-							</div>
-						))}
-					</div>
-				</div>
-			)}
-
-			<!-- 키워드 -->
-			{article.keywords.length > 0 && (
-				<div class="flex flex-wrap gap-2 mb-8">
-					{article.keywords.map((kw) => (
-						<span class="text-[13px] text-text-secondary bg-surface-alt px-2.5 py-1 rounded">
-							#{kw}
-						</span>
-					))}
-				</div>
-			)}
-
-			<!-- 관련 보도(같은 이슈 다른 매체) -->
-			{related.length > 0 && (
-				<div class="mb-8 pt-6 border-t border-border">
-					<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
-						관련 보도 {related.length}건
-					</h2>
-					<ul class="divide-y divide-border">
-						{related.map((r) => (
-							<li class="group relative py-3">
-								<div class="flex items-center gap-x-2 mb-1.5 text-[13px] text-text-secondary">
-									<a href={`/source/${r.sourceId}`} tabindex="-1" aria-hidden="true" class="stretch-over shrink-0">
-										<SourceIcon
-											sourceId={r.sourceId}
-											sourceUrl={r.sourceUrl}
-											sourceName={r.sourceName}
-											size={22}
-										/>
-									</a>
-									<a
-										href={`/source/${r.sourceId}`}
-										class="stretch-over font-bold text-text hover:text-brand hover:underline"
-									>
-										{r.sourceName}
-									</a>
-									<span aria-hidden="true">·</span>
-									<time class="tabular-nums">{formatRelativeTime(r.publishedAt)}</time>
-								</div>
-								<a href={`/article/${r.id}`} class="read-link stretch-link block">
-									<p class="text-[17px] font-semibold leading-snug group-hover:text-brand transition-colors">
-										{r.title}
-									</p>
-								</a>
+					<ul class="space-y-3">
+						{article.keyPoints.map((point) => (
+							<li class="flex items-start gap-3">
+								<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
+								<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(point)} />
 							</li>
 						))}
 					</ul>
 				</div>
-			)}
 
-			<!-- 하단 액션: 목록으로(좌) · 원문 보기(우) 한 줄 정렬 -->
-			<div class="flex items-center justify-between pt-6 border-t border-border">
-				<a
-					id="back-to-list"
-					href={`/category/${article.category}`}
-					class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
-				>
-					&larr; 목록으로
-				</a>
-				<a
-					href={article.sourceUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="text-[15px] font-medium text-brand hover:underline"
-				>
-					원문 보기 &rarr;
-				</a>
-			</div>
-		</article>
+				<!-- 주요 내용(구조화 정리: 소제목 + 최대 2단 불릿) -->
+				{(article.sections ?? []).length > 0 && (
+					<div class="mb-8">
+						<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+							주요 내용
+						</h2>
+						<div class="space-y-6">
+							{article.sections.map((s) => (
+								<div>
+									<h3 class="text-lg font-bold mb-2">{s.heading}</h3>
+									<ul class="space-y-2">
+										{s.points.map((p) => (
+											<li>
+												<div class="flex items-start gap-3">
+													<span class="text-accent text-lg leading-none mt-0.5">&bull;</span>
+													<span class="text-[17px] leading-relaxed" set:html={renderEmphasis(p.text)} />
+												</div>
+												{p.children && p.children.length > 0 && (
+													<ul class="mt-1.5 ml-6 space-y-1.5">
+														{p.children.map((c) => (
+															<li class="flex items-start gap-2.5">
+																<span class="text-text-secondary text-xs leading-none mt-1.5">&#9702;</span>
+																<span
+																	class="text-[15px] text-text-secondary leading-relaxed"
+																	set:html={renderEmphasis(c)}
+																/>
+															</li>
+														))}
+													</ul>
+												)}
+											</li>
+										))}
+									</ul>
+								</div>
+							))}
+						</div>
+					</div>
+				)}
+
+				<!-- 키워드 -->
+				{article.keywords.length > 0 && (
+					<div class="flex flex-wrap gap-2 mb-8">
+						{article.keywords.map((kw) => (
+							<span class="text-[13px] text-text-secondary bg-surface-alt px-2.5 py-1 rounded">
+								#{kw}
+							</span>
+						))}
+					</div>
+				)}
+
+				<!-- 하단 액션: 목록으로(좌) · 원문 보기(우) 한 줄 정렬 -->
+				<div class="flex items-center justify-between pt-6 border-t border-border">
+					<a
+						id="back-to-list"
+						href={`/category/${article.category}`}
+						class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
+					>
+						&larr; 목록으로
+					</a>
+					<a
+						href={article.sourceUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="text-[15px] font-medium text-brand hover:underline"
+					>
+						원문 보기 &rarr;
+					</a>
+				</div>
+			</article>
+
+			<!-- 우측 사이드바: 매체 정보 · 이 매체의 다른 기사 · 관련 보도(타 매체) -->
+			<aside class="mt-8 space-y-4 min-[87.5rem]:mt-0 min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start">
+				<div class="rounded-md border border-border bg-surface-alt p-4">
+					<div class="flex items-center gap-2.5">
+						<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
+							<SourceIcon
+								sourceId={article.sourceId}
+								sourceUrl={article.sourceUrl}
+								sourceName={article.sourceName}
+								size={36}
+							/>
+						</a>
+						<div class="min-w-0">
+							<a
+								href={`/source/${article.sourceId}`}
+								class="block font-bold text-text leading-tight hover:text-brand hover:underline"
+							>
+								{article.sourceName}
+							</a>
+							<a
+								href={`/category/${article.category}`}
+								class="text-[13px] font-medium text-accent hover:text-brand hover:underline"
+							>
+								{CATEGORY_LABELS[article.category as Category] ?? article.category}
+							</a>
+						</div>
+					</div>
+					{sourceTotal !== null && (
+						<p class="mt-3 text-[13px] text-text-secondary tabular-nums">
+							이 매체가 낸 기사 {sourceTotal}건
+						</p>
+					)}
+					<a
+						href={`/source/${article.sourceId}`}
+						class="mt-3 block text-center text-[13px] font-semibold text-text-secondary rounded border border-border py-2 hover:bg-surface hover:text-text transition-colors"
+					>
+						이 매체 전체 보기
+					</a>
+				</div>
+
+				{sourceRecent.length > 0 && (
+					<div class="rounded-md border border-border bg-surface-alt p-4">
+						<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+							{article.sourceName}의 다른 기사
+						</h2>
+						<ul class="divide-y divide-border">
+							{sourceRecent.map((a) => (
+								<li class="group relative py-2.5 first:pt-0 last:pb-0">
+									<a href={`/article/${a.id}`} class="read-link stretch-link block">
+										<p class="text-[14px] font-semibold leading-snug group-hover:text-brand transition-colors line-clamp-2">
+											{a.title}
+										</p>
+										<time class="mt-1 block text-[12px] text-text-secondary tabular-nums">
+											{formatRelativeTime(a.publishedAt)}
+										</time>
+									</a>
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
+
+				{related.length > 0 && (
+					<div class="rounded-md border border-border bg-surface-alt p-4">
+						<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
+							관련 보도 {related.length}건
+						</h2>
+						<ul class="divide-y divide-border">
+							{related.map((r) => (
+								<li class="group relative py-2.5 first:pt-0 last:pb-0">
+									<div class="flex items-center gap-x-1.5 mb-1 text-[12px] text-text-secondary">
+										<a href={`/source/${r.sourceId}`} tabindex="-1" aria-hidden="true" class="stretch-over shrink-0">
+											<SourceIcon
+												sourceId={r.sourceId}
+												sourceUrl={r.sourceUrl}
+												sourceName={r.sourceName}
+												size={18}
+											/>
+										</a>
+										<a
+											href={`/source/${r.sourceId}`}
+											class="stretch-over font-bold text-text hover:text-brand hover:underline"
+										>
+											{r.sourceName}
+										</a>
+										<span aria-hidden="true">·</span>
+										<time class="tabular-nums">{formatRelativeTime(r.publishedAt)}</time>
+									</div>
+									<a href={`/article/${r.id}`} class="read-link stretch-link block">
+										<p class="text-[14px] font-semibold leading-snug group-hover:text-brand transition-colors line-clamp-2">
+											{r.title}
+										</p>
+									</a>
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
+			</aside>
+		</div>
 	)}
 </BaseLayout>
 

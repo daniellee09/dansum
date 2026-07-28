@@ -10,12 +10,16 @@ interface Props {
 	description?: string;
 	/** 공유 카드 타입: 홈/목록은 website, 기사 상세는 article */
 	type?: "website" | "article";
+	/** 본문 옆에 사이드바를 둘 만큼 넓은 칼럼이 필요한 페이지(기사 상세)용.
+	    --content-w도 같이 늘려야 헤더 검색창과의 세로 중심선이 맞는다(global.css 참고). */
+	wide?: boolean;
 }
 
 const {
 	title = "단숨 - AI 경제 뉴스 요약",
 	description = "세계 주요 경제 뉴스를 단숨에 파악하세요. AI가 핵심만 요약해드립니다.",
 	type = "website",
+	wide = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.url).href;
@@ -86,12 +90,27 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 		<Header />
 		<Sidebar />
 		<!-- app-shell: 데스크톱에서 고정된 사이드바 폭만큼 밀린다(global.css) -->
-		<div class="app-shell flex flex-col transition-[padding] duration-200 ease-out">
-			<main class="flex-1 w-full max-w-4xl mx-auto px-5 py-7">
+		<div class:list={["app-shell flex flex-col transition-[padding] duration-200 ease-out", wide && "app-shell--wide"]}>
+			<main
+				class:list={[
+					"flex-1 w-full mx-auto px-5 py-7 max-w-4xl",
+					wide && "min-[87.5rem]:max-w-[86rem]",
+				]}
+			>
 				<slot />
 			</main>
 			<Footer />
 		</div>
+
+		<!-- wide(기사 상세): 사이드바가 붙을 만큼 폭이 넉넉한 화면(wide-min)에서만 본문 칼럼을 넓힌다.
+		     --content-w도 같이 늘려야 그 폭에서도 헤더 검색창과 세로 중심선이 계속 맞는다(global.css 참고). -->
+		<style>
+			@media (min-width: 87.5rem) {
+				.app-shell--wide {
+					--content-w: 86rem;
+				}
+			}
+		</style>
 
 		<!-- 맨 위로: 일정 스크롤 후 우하단에 부드럽게 등장 -->
 		<button

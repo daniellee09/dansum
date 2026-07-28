@@ -108,7 +108,7 @@ const { hasMore, category, source, query } = Astro.props;
 		// 요약: 칸 안쪽 중첩 패널
 		const panel = document.createElement("div");
 		panel.className =
-			"mt-3 rounded-md border border-border bg-surface-alt group-hover:bg-surface transition-colors px-4 py-3.5";
+			"mt-3 rounded-md bg-surface-alt group-hover:bg-surface transition-colors px-4 py-3.5";
 		const p = document.createElement("p");
 		p.className = "text-[15px] text-text-secondary leading-relaxed line-clamp-2";
 		p.textContent = a.summary;
