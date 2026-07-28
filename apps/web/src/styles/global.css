@@ -47,6 +47,34 @@ html.dark {
 	--color-border: #3d444d;
 }
 
+/* 스크롤바: OS 기본(두꺼운 트랙+썸)을 걷어내고, 마우스를 올렸을 때만 얇은 막대가 보이게 */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: transparent transparent;
+}
+*:hover {
+	scrollbar-color: var(--color-border) transparent;
+}
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	border-radius: 9999px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb {
+	background-color: var(--color-border);
+}
+::-webkit-scrollbar-thumb:hover {
+	background-color: var(--color-text-secondary);
+}
+
 /* 드래그 선택색을 브랜드색으로(은은하게) */
 ::selection {
 	background-color: color-mix(in oklab, var(--color-brand) 24%, transparent);
@@ -74,8 +102,8 @@ html.dark {
 :root {
 	--sidebar-w: 280px;
 	--header-h: 60px;
-	/* 본문 칼럼 최대 폭(= Tailwind max-w-4xl). 레이아웃 보정 계산에 쓴다 */
-	--content-w: 56rem;
+	/* 본문 칼럼 최대 폭(= BaseLayout의 max-w-[52rem]). 레이아웃 보정 계산에 쓴다 */
+	--content-w: 52rem;
 }
 
 #app-header {
@@ -99,7 +127,7 @@ html.dark {
 @media (min-width: 1024px) {
 	.app-shell {
 		padding-left: var(--sidebar-w);
-		/* 본문 칼럼(max-w-4xl)을 '사이드바를 뺀 영역'이 아니라 '뷰포트' 기준 가운데에 두어
+		/* 본문 칼럼(--content-w)을 '사이드바를 뺀 영역'이 아니라 '뷰포트' 기준 가운데에 두어
 		   헤더 검색창(뷰포트 중앙 정렬)과 세로 중심선을 맞춘다.
 		   왼쪽 사이드바 폭만큼 오른쪽에도 여백을 주면 되지만, 그만큼 칼럼이 좁아지면 안 되므로
 		   남는 여유폭(= 화면폭 - 사이드바 - 칼럼폭)까지만 준다. 여유가 없으면 0 → 기존 동작. */

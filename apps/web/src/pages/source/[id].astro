@@ -2,6 +2,7 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleList from "../../components/ArticleList.astro";
 import LoadMore from "../../components/LoadMore.astro";
+import SortTabs from "../../components/SortTabs.astro";
 import SourceIcon from "../../components/SourceIcon.astro";
 import { getArticles } from "../../lib/api";
 
@@ -9,11 +10,13 @@ const { id } = Astro.params;
 
 if (!id) return Astro.redirect("/");
 
+const sort = Astro.url.searchParams.get("sort") === "hot" ? "hot" : "latest";
+
 let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
 let error: string | null = null;
 
 try {
-	articles = await getArticles({ source: id });
+	articles = await getArticles({ source: id, sort });
 } catch (e) {
 	error = e instanceof Error ? e.message : "Failed to load articles";
 }
@@ -28,23 +31,35 @@ const sourceName = lead?.sourceName ?? id;
 	description={`${sourceName}의 최신 경제 뉴스 AI 요약`}
 >
 	<section>
-		<div class="mb-3 flex items-center gap-2.5">
-			{lead && (
-				<SourceIcon
-					sourceId={lead.sourceId}
-					sourceUrl={lead.sourceUrl}
-					sourceName={lead.sourceName}
-					size={28}
-				/>
-			)}
-			<div class="min-w-0">
-				<h2 class="text-lg font-bold tracking-tight leading-tight">{sourceName}</h2>
-				{articles && (
-					<p class="text-[13px] text-text-secondary tabular-nums">
-						기사 {articles.total}건
-					</p>
+		<div class="mb-3 flex items-center justify-between gap-2.5">
+			<div class="flex items-center gap-2.5 min-w-0">
+				{lead && (
+					<SourceIcon
+						sourceId={lead.sourceId}
+						sourceUrl={lead.sourceUrl}
+						sourceName={lead.sourceName}
+						size={28}
+					/>
 				)}
+				<div class="min-w-0">
+					<h2 class="text-lg font-bold tracking-tight leading-tight">{sourceName}</h2>
+					{articles && (
+						<p class="text-[13px] text-text-secondary tabular-nums">
+							기사 {articles.total}건
+						</p>
+					)}
+				</div>
 			</div>
+			<button
+				type="button"
+				data-follow-toggle
+				data-follow-type="source"
+				data-follow-value={id}
+				aria-pressed="false"
+				class="follow-btn shrink-0 rounded-full border border-border px-3.5 py-1.5 text-[13px] font-semibold text-text-secondary transition-colors hover:border-text-secondary hover:text-text aria-pressed:border-brand aria-pressed:text-brand"
+			>
+				팔로우
+			</button>
 		</div>
 
 		{error ? (
@@ -53,8 +68,9 @@ const sourceName = lead?.sourceName ?? id;
 			</div>
 		) : articles ? (
 			<>
+				<SortTabs basePath={`/source/${id}`} sort={sort} />
 				<ArticleList articles={articles.items} />
-				<LoadMore hasMore={articles.hasMore} source={id} />
+				<LoadMore hasMore={articles.hasMore} source={id} sort={sort} />
 			</>
 		) : null}
 	</section>

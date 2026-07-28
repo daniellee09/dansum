@@ -7,9 +7,11 @@ interface Props {
 	source?: string;
 	/** 검색 페이지에서 검색어를 유지하기 위한 q. 그 외에는 비움 */
 	query?: string;
+	/** 정렬(최신순/인기순) 유지. 생략하면 정렬 파라미터를 보내지 않는다(검색은 관련도순 기본이 됨) */
+	sort?: "latest" | "hot";
 }
 
-const { hasMore, category, source, query } = Astro.props;
+const { hasMore, category, source, query, sort } = Astro.props;
 ---
 
 {hasMore && (
@@ -20,6 +22,7 @@ const { hasMore, category, source, query } = Astro.props;
 			data-category={category ?? ""}
 			data-source={source ?? ""}
 			data-query={query ?? ""}
+			data-sort={sort ?? ""}
 			class="px-5 py-2 text-sm font-semibold text-text border border-border rounded-md bg-surface-alt hover:border-text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 		>
 			더 보기
@@ -28,100 +31,11 @@ const { hasMore, category, source, query } = Astro.props;
 )}
 
 <script>
-	import { CATEGORY_LABELS, formatRelativeTime } from "@dansum/shared";
 	import type { Article } from "@dansum/shared";
-	import { getSourceMeta } from "../lib/source";
+	import { renderArticleCard } from "../lib/renderArticleCard";
+	import { setupBookmarkButtons } from "../lib/bookmarks";
 
 	const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
-
-	// 주의: SourceIcon.astro와 마크업 중복 — 한쪽 수정 시 반드시 동기화
-	function renderSourceIcon(a: Article, size = 18): HTMLElement {
-		const { initial, color, iconUrl } = getSourceMeta(a.sourceId, a.sourceUrl, a.sourceName);
-		const wrap = document.createElement("span");
-		wrap.className =
-			"relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white leading-none";
-		wrap.style.cssText = `width:${size}px;height:${size}px;background-color:${color};font-size:${Math.round(size * 0.5)}px`;
-		wrap.setAttribute("aria-hidden", "true");
-		wrap.textContent = initial;
-		if (iconUrl) {
-			const img = document.createElement("img");
-			img.src = iconUrl;
-			img.alt = "";
-			img.loading = "lazy";
-			img.width = size;
-			img.height = size;
-			img.className = "absolute inset-0 h-full w-full object-cover";
-			img.addEventListener("error", () => img.remove());
-			wrap.appendChild(img);
-		}
-		return wrap;
-	}
-
-	// 주의: ArticleCard.astro와 마크업 중복 — 한쪽 수정 시 반드시 동기화
-	function renderCard(a: Article): HTMLElement {
-		const article = document.createElement("article");
-		article.className = "group -mx-4 px-4 py-5 transition-colors hover:bg-surface-alt";
-
-		// 헤더: 아이콘 + 매체명·카테고리 / 시간
-		const head = document.createElement("div");
-		head.className = "flex items-start gap-x-2.5";
-
-		const headText = document.createElement("div");
-		headText.className = "min-w-0 text-sm leading-tight";
-
-		const nameRow = document.createElement("div");
-		nameRow.className = "flex items-center gap-x-2";
-		const src = document.createElement("a");
-		src.href = `/source/${a.sourceId}`;
-		src.className = "font-semibold text-text hover:text-brand hover:underline";
-		src.textContent = a.sourceName;
-		const cat = document.createElement("a");
-		cat.href = `/category/${a.category}`;
-		cat.className = "text-text-secondary hover:text-brand hover:underline";
-		cat.textContent =
-			(CATEGORY_LABELS as Record<string, string>)[a.category] ?? a.category;
-		nameRow.append(src, cat);
-
-		const time = document.createElement("time");
-		time.className = "mt-1 block text-[13px] text-text-secondary tabular-nums";
-		time.textContent = formatRelativeTime(a.publishedAt);
-
-		headText.append(nameRow, time);
-		// 아바타도 매체 목록으로(이름 링크와 중복 탭 정지가 되지 않게 포커스 대상에서 제외)
-		const iconLink = document.createElement("a");
-		iconLink.href = `/source/${a.sourceId}`;
-		iconLink.tabIndex = -1;
-		iconLink.setAttribute("aria-hidden", "true");
-		iconLink.className = "shrink-0";
-		iconLink.appendChild(renderSourceIcon(a, 26));
-		head.append(iconLink, headText);
-
-		const link = document.createElement("a");
-		link.href = `/article/${a.id}`;
-		link.className = "block read-link mt-3.5";
-
-		const h2 = document.createElement("h2");
-		h2.className =
-			"text-xl font-semibold leading-snug group-hover:text-brand transition-colors";
-		h2.textContent = a.title;
-
-		// 요약: 칸 안쪽 중첩 패널
-		const panel = document.createElement("div");
-		panel.className =
-			"mt-3 rounded-md bg-surface-alt group-hover:bg-surface transition-colors px-4 py-3.5";
-		const p = document.createElement("p");
-		p.className = "text-[15px] text-text-secondary leading-relaxed line-clamp-2";
-		p.textContent = a.summary;
-		const more = document.createElement("span");
-		more.className = "mt-2 inline-block text-sm font-semibold text-text underline";
-		more.textContent = "더 보기";
-		panel.append(p, more);
-
-		link.append(h2, panel);
-
-		article.append(head, link);
-		return article;
-	}
 
 	// View Transitions 후 목록/버튼이 새로 그려지므로 매 page-load마다 재바인딩
 	function setupLoadMore() {
@@ -133,6 +47,7 @@ const { hasMore, category, source, query } = Astro.props;
 		const category = btn.dataset.category ?? "";
 		const source = btn.dataset.source ?? "";
 		const query = btn.dataset.query ?? "";
+		const sort = btn.dataset.sort ?? "";
 
 		btn.addEventListener("click", async () => {
 			btn.disabled = true;
@@ -142,11 +57,16 @@ const { hasMore, category, source, query } = Astro.props;
 				if (category) params.set("category", category);
 				if (source) params.set("source", source);
 				if (query) params.set("q", query);
+				if (sort) params.set("sort", sort);
 				const res = await fetch(`${API_BASE}/api/articles?${params}`);
 				const json = await res.json();
 				const data = json.data as { items: Article[]; hasMore: boolean };
 
-				for (const a of data.items) list.appendChild(renderCard(a));
+				for (const a of data.items) {
+					const cardEl = renderArticleCard(a);
+					list.appendChild(cardEl);
+					setupBookmarkButtons(cardEl);
+				}
 				page++;
 
 				if (data.hasMore) {

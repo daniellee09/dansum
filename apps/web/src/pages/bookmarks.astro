@@ -1,0 +1,54 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<!-- 계정이 없어 localStorage에 저장된 id만 서버가 알 수 있으므로 클라이언트에서 그린다 -->
+<BaseLayout title="북마크 - 단숨" description="저장해 둔 기사 목록">
+	<section>
+		<h2 class="text-lg font-bold mb-3">북마크</h2>
+
+		<p id="bookmark-empty" class="hidden py-20 text-center text-text-secondary">
+			아직 북마크한 기사가 없습니다. 기사 카드의 북마크 아이콘을 눌러 저장해보세요.
+		</p>
+
+		<div id="bookmark-list" class="-mx-4 px-4 divide-y divide-border border-t border-border"></div>
+	</section>
+</BaseLayout>
+
+<script>
+	import { getBookmarkIds, removeBookmark, setupBookmarkButtons } from "../lib/bookmarks";
+	import { getArticle } from "../lib/api";
+	import { renderArticleCard } from "../lib/renderArticleCard";
+
+	async function loadBookmarks() {
+		const list = document.getElementById("bookmark-list");
+		const empty = document.getElementById("bookmark-empty");
+		if (!list) return;
+
+		list.innerHTML = "";
+		const ids = getBookmarkIds();
+
+		if (ids.length === 0) {
+			empty?.classList.remove("hidden");
+			return;
+		}
+		empty?.classList.add("hidden");
+
+		const results = await Promise.allSettled(ids.map((id) => getArticle(id)));
+		let rendered = 0;
+		results.forEach((r, i) => {
+			if (r.status === "fulfilled") {
+				list.appendChild(renderArticleCard(r.value));
+				rendered++;
+			} else {
+				// 삭제 등으로 더는 조회되지 않는 기사는 북마크 목록에서도 정리
+				removeBookmark(ids[i]);
+			}
+		});
+
+		if (rendered === 0) empty?.classList.remove("hidden");
+		setupBookmarkButtons(list);
+	}
+
+	document.addEventListener("astro:page-load", loadBookmarks);
+</script>

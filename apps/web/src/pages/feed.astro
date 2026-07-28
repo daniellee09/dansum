@@ -1,0 +1,72 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<!-- 계정이 없어 팔로우 목록이 localStorage에만 있으므로 클라이언트에서 그린다 -->
+<BaseLayout title="내 피드 - 단숨" description="팔로우한 매체·카테고리의 최신 기사">
+	<section>
+		<h2 class="text-lg font-bold mb-3">내 피드</h2>
+
+		<p id="feed-empty-follow" class="hidden py-20 text-center text-text-secondary">
+			아직 팔로우한 매체나 카테고리가 없습니다. 매체·카테고리 페이지에서 팔로우 버튼을 눌러보세요.
+		</p>
+		<p id="feed-empty-results" class="hidden py-20 text-center text-text-secondary">
+			팔로우한 곳에 아직 새 기사가 없습니다.
+		</p>
+
+		<div id="feed-list" class="-mx-4 px-4 divide-y divide-border border-t border-border"></div>
+	</section>
+</BaseLayout>
+
+<script>
+	import type { Article } from "@dansum/shared";
+	import { getFollowedSources, getFollowedCategories } from "../lib/follows";
+	import { getArticles } from "../lib/api";
+	import { renderArticleCard } from "../lib/renderArticleCard";
+	import { setupBookmarkButtons } from "../lib/bookmarks";
+
+	async function loadFeed() {
+		const list = document.getElementById("feed-list");
+		const emptyFollow = document.getElementById("feed-empty-follow");
+		const emptyResults = document.getElementById("feed-empty-results");
+		if (!list) return;
+
+		list.innerHTML = "";
+		emptyFollow?.classList.add("hidden");
+		emptyResults?.classList.add("hidden");
+
+		const sources = getFollowedSources();
+		const categories = getFollowedCategories();
+
+		if (sources.length === 0 && categories.length === 0) {
+			emptyFollow?.classList.remove("hidden");
+			return;
+		}
+
+		const requests = [
+			...sources.map((source) => getArticles({ source, pageSize: 10 }).catch(() => null)),
+			...categories.map((category) =>
+				getArticles({ category, pageSize: 10 }).catch(() => null),
+			),
+		];
+		const results = await Promise.all(requests);
+
+		// 여러 팔로우 소스에 겹치는 기사가 있을 수 있어 id로 중복 제거 후 최신순 병합
+		const byId = new Map<string, Article>();
+		for (const r of results) {
+			if (!r) continue;
+			for (const a of r.items) byId.set(a.id, a);
+		}
+		const merged = [...byId.values()].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+
+		if (merged.length === 0) {
+			emptyResults?.classList.remove("hidden");
+			return;
+		}
+
+		for (const a of merged) list.appendChild(renderArticleCard(a));
+		setupBookmarkButtons(list);
+	}
+
+	document.addEventListener("astro:page-load", loadFeed);
+</script>

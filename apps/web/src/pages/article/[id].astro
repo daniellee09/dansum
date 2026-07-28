@@ -46,12 +46,16 @@ if (!article && !error) return Astro.redirect("/");
 			</a>
 		</div>
 	) : (
-		<!-- 사이드바 폭(20rem) 만큼을 좌우 대칭으로 확보해야 본문이 항상 헤더 검색창과
-		     같은 세로 중심선에 놓인다(사이드바만큼 오른쪽으로 치우치지 않게 왼쪽에 빈 칸을 둔다).
+		<!-- 본문(최대 46rem) + 우측 매체 사이드바(20rem)를 하나의 덩어리로 보고, 그 덩어리 전체가
+		     헤더 검색창과 같은 세로 중심선에 오도록 한다(본문만 따로 중앙에 두지 않는다 — 그러면
+		     사이드바가 붙는 만큼 전체 덩어리는 검색창 기준 오른쪽으로 치우쳐 보인다).
+		     BaseLayout의 --content-w/max-w를 이 두 칼럼 폭 합(46+20+2 gap+2.5 ml-10=70.5rem)에
+		     맞춰뒀기 때문에, 본문+사이드바를 감싸는 <main>이 그 폭 그대로 검색창과 가운데 정렬된다.
+		     ml-10은 왼쪽 사이드바 메뉴에 본문이 바짝 붙어 보이는 걸 피하기 위한 여유 간격(가운데 정렬은
+		     아주 미세하게만 어긋나며, 큰 화면에서는 체감되지 않는다).
 		     좁은 화면(min-[87.5rem] 미만)에서는 그리드를 끄고 본문 아래로 사이드바가 자연스럽게 쌓인다. -->
-		<div class="min-[87.5rem]:grid min-[87.5rem]:grid-cols-[20rem_minmax(0,42rem)_20rem] min-[87.5rem]:gap-x-8">
-			<div class="hidden min-[87.5rem]:block" aria-hidden="true"></div>
-			<article class="min-w-0">
+		<div class="min-[87.5rem]:grid min-[87.5rem]:grid-cols-[minmax(0,46rem)_20rem] min-[87.5rem]:gap-x-8 min-[87.5rem]:ml-10">
+			<article class="min-w-0" data-article-id={article.id}>
 				<!-- 메타 -->
 				<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-[15px]">
 					<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
@@ -101,17 +105,24 @@ if (!article && !error) return Astro.redirect("/");
 					</p>
 				)}
 
-				<!-- 대표 이미지: 제목 바로 아래. 목록과 같은 규칙(원본 크기 유지, 확대하지 않음)이되
-				     상세는 조금 더 크게 허용한다. 원본에 이미지가 없는 기사는 이 블록이 통째로 빠진다. -->
+				<!-- 대표 이미지: 제목 바로 아래. object-scale-down으로 원본보다 키우지 않고(목록과 같은 규칙),
+				     프레임(높이 440px 고정)의 남는 좌우 칸은 같은 사진을 확대·블러한 배경으로 채운다(레터박스 방지).
+				     원본에 이미지가 없는 기사는 이 블록이 통째로 빠진다. -->
 				{article.imageUrl && (
-					<figure class="mb-6 overflow-hidden rounded-md border border-border bg-surface-alt">
+					<figure class="relative mb-6 h-[440px] overflow-hidden rounded-md border border-border bg-surface-alt">
+						<div
+							class="absolute inset-0 scale-110 bg-cover bg-center blur-2xl brightness-75"
+							style={{ backgroundImage: `url("${article.imageUrl}")` }}
+							aria-hidden="true"
+						>
+						</div>
 						<img
 							src={article.imageUrl}
 							alt={article.title}
 							loading="eager"
 							decoding="async"
 							referrerpolicy="no-referrer"
-							class="mx-auto block max-h-[440px] max-w-full object-contain"
+							class="relative mx-auto block h-full max-w-full object-scale-down"
 							onerror="this.closest('figure').remove()"
 						/>
 					</figure>
@@ -194,13 +205,28 @@ if (!article && !error) return Astro.redirect("/");
 
 				<!-- 하단 액션: 목록으로(좌) · 원문 보기(우) 한 줄 정렬 -->
 				<div class="flex items-center justify-between pt-6 border-t border-border">
-					<a
-						id="back-to-list"
-						href={`/category/${article.category}`}
-						class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
-					>
-						&larr; 목록으로
-					</a>
+					<div class="flex items-center gap-4">
+						<a
+							id="back-to-list"
+							href={`/category/${article.category}`}
+							class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
+						>
+							&larr; 목록으로
+						</a>
+						<button
+							type="button"
+							data-bookmark-toggle
+							data-article-id={article.id}
+							aria-label="북마크"
+							aria-pressed="false"
+							class="bookmark-btn inline-flex items-center gap-1.5 text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
+						>
+							<svg data-bookmark-icon class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12v16l-6-4-6 4V4z" />
+							</svg>
+							<span data-bookmark-label>북마크</span>
+						</button>
+					</div>
 					<a
 						href={article.sourceUrl}
 						target="_blank"
@@ -214,20 +240,20 @@ if (!article && !error) return Astro.redirect("/");
 
 			<!-- 우측 사이드바: 매체 정보 · 이 매체의 다른 기사 · 관련 보도(타 매체) -->
 			<aside class="mt-8 space-y-4 min-[87.5rem]:mt-0 min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start">
-				<div class="rounded-md border border-border bg-surface-alt p-4">
-					<div class="flex items-center gap-2.5">
+				<div class="rounded-2xl bg-surface-alt p-5">
+					<div class="flex items-center gap-3">
 						<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">
 							<SourceIcon
 								sourceId={article.sourceId}
 								sourceUrl={article.sourceUrl}
 								sourceName={article.sourceName}
-								size={36}
+								size={48}
 							/>
 						</a>
-						<div class="min-w-0">
+						<div class="min-w-0 flex-1">
 							<a
 								href={`/source/${article.sourceId}`}
-								class="block font-bold text-text leading-tight hover:text-brand hover:underline"
+								class="block text-lg font-bold text-text leading-tight hover:text-brand hover:underline"
 							>
 								{article.sourceName}
 							</a>
@@ -239,21 +265,35 @@ if (!article && !error) return Astro.redirect("/");
 							</a>
 						</div>
 					</div>
+
+					<button
+						type="button"
+						data-follow-toggle
+						data-follow-type="source"
+						data-follow-value={article.sourceId}
+						aria-pressed="false"
+						class="follow-btn mt-4 block w-full rounded-full bg-brand py-2 text-center text-[13px] font-bold text-white transition-colors hover:brightness-110 aria-pressed:border aria-pressed:border-border aria-pressed:bg-surface aria-pressed:text-text aria-pressed:hover:bg-surface-alt"
+					>
+						팔로우
+					</button>
+
 					{sourceTotal !== null && (
-						<p class="mt-3 text-[13px] text-text-secondary tabular-nums">
-							이 매체가 낸 기사 {sourceTotal}건
-						</p>
+						<div class="mt-4 border-t border-border pt-4">
+							<p class="text-xl font-extrabold text-text tabular-nums">{sourceTotal}건</p>
+							<p class="text-[13px] text-text-secondary">이 매체가 낸 기사</p>
+						</div>
 					)}
+
 					<a
 						href={`/source/${article.sourceId}`}
-						class="mt-3 block text-center text-[13px] font-semibold text-text-secondary rounded border border-border py-2 hover:bg-surface hover:text-text transition-colors"
+						class="mt-4 block rounded-full bg-surface py-2 text-center text-[13px] font-semibold text-text transition-colors hover:bg-[color-mix(in_oklab,var(--color-text)_8%,var(--color-surface))]"
 					>
 						이 매체 전체 보기
 					</a>
 				</div>
 
 				{sourceRecent.length > 0 && (
-					<div class="rounded-md border border-border bg-surface-alt p-4">
+					<div class="rounded-2xl bg-surface-alt p-5">
 						<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
 							{article.sourceName}의 다른 기사
 						</h2>
@@ -275,7 +315,7 @@ if (!article && !error) return Astro.redirect("/");
 				)}
 
 				{related.length > 0 && (
-					<div class="rounded-md border border-border bg-surface-alt p-4">
+					<div class="rounded-2xl bg-surface-alt p-5">
 						<h2 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">
 							관련 보도 {related.length}건
 						</h2>
@@ -314,6 +354,17 @@ if (!article && !error) return Astro.redirect("/");
 		</div>
 	)}
 </BaseLayout>
+
+<script>
+	// 홈 화면 "최근 본 기사" 위젯이 읽을 수 있게 방문을 기록한다(lib/recentlyViewed.ts).
+	// 계정이 없어 localStorage 기반이라 서버가 아닌 클라이언트에서 기록한다.
+	import { addRecentlyViewed } from "../../lib/recentlyViewed";
+
+	document.addEventListener("astro:page-load", () => {
+		const id = document.querySelector<HTMLElement>("[data-article-id]")?.dataset.articleId;
+		if (id) addRecentlyViewed(id);
+	});
+</script>
 
 <script>
 	// "목록으로": 같은 사이트 안에서 들어왔으면 이전 목록(홈/주요뉴스·카테고리)으로

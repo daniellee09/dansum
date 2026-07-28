@@ -3,7 +3,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import ArticleList from "../components/ArticleList.astro";
 import TopNews from "../components/TopNews.astro";
 import LoadMore from "../components/LoadMore.astro";
+import SortTabs from "../components/SortTabs.astro";
 import { getArticles, getTopClusters } from "../lib/api";
+
+const sort = Astro.url.searchParams.get("sort") === "hot" ? "hot" : "latest";
 
 let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
 let clusters: Awaited<ReturnType<typeof getTopClusters>> = [];
@@ -11,7 +14,7 @@ let error: string | null = null;
 
 try {
 	[articles, clusters] = await Promise.all([
-		getArticles(),
+		getArticles({ sort }),
 		getTopClusters(6),
 	]);
 } catch (e) {
@@ -19,26 +22,154 @@ try {
 }
 ---
 
-<BaseLayout>
+<BaseLayout wide="74rem">
 	{error ? (
 		<div class="py-12 text-center">
 			<p class="text-text-secondary">{error}</p>
 		</div>
 	) : (
-		<>
-			<div id="top-news" class="scroll-mt-24">
-				<TopNews clusters={clusters} />
-			</div>
-
-			<section id="latest" class="scroll-mt-24">
-				<div class="mb-3">
-					<h2 class="text-lg font-bold tracking-tight">최신 뉴스</h2>
+		<!-- 본문(52rem, 기존 그대로)+우측 개인화 사이드바(20rem)를 하나의 덩어리로 보고 <main>(74rem)이
+		     검색창과 가운데 정렬되게 한다(article/[id].astro와 같은 원리, BaseLayout 참고).
+		     87.5rem 미만에서는 부가 위젯이라 쌓지 않고 완전히 숨긴다. -->
+		<div class="min-[87.5rem]:grid min-[87.5rem]:grid-cols-[minmax(0,52rem)_20rem] min-[87.5rem]:gap-x-8">
+			<div class="min-w-0">
+				<div id="top-news" class="scroll-mt-24">
+					<TopNews clusters={clusters} />
 				</div>
 
-				{articles ? <ArticleList articles={articles.items} /> : null}
+				<section id="latest" class="scroll-mt-24">
+					<div class="mb-3">
+						<h2 class="text-lg font-bold tracking-tight">최신 뉴스</h2>
+					</div>
 
-				<LoadMore hasMore={articles?.hasMore ?? false} />
-			</section>
-		</>
+					<SortTabs basePath="/" sort={sort} />
+
+					{articles ? <ArticleList articles={articles.items} /> : null}
+
+					<LoadMore hasMore={articles?.hasMore ?? false} sort={sort} />
+				</section>
+			</div>
+
+			<aside class="hidden min-[87.5rem]:block min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start space-y-4">
+				<div class="rounded-2xl bg-surface-alt p-5">
+					<h2 class="text-sm font-bold uppercase tracking-wider text-text-secondary">
+						팔로우한 소식
+					</h2>
+
+					<p id="follow-feed-empty" class="hidden mt-3 text-[13px] text-text-secondary">
+						팔로우한 매체·카테고리가 없습니다. 매체나 카테고리 페이지에서 팔로우해보세요.
+					</p>
+
+					<div id="follow-feed-list" class="hidden mt-1 divide-y divide-border"></div>
+
+					<a
+						href="/feed"
+						class="mt-3 block text-[13px] font-semibold text-text hover:text-brand hover:underline"
+					>
+						내 피드 전체 보기 &rarr;
+					</a>
+				</div>
+
+				<div class="rounded-2xl bg-surface-alt p-5">
+					<h2 class="text-sm font-bold uppercase tracking-wider text-text-secondary">
+						최근 본 기사
+					</h2>
+
+					<p id="recent-viewed-empty" class="hidden mt-3 text-[13px] text-text-secondary">
+						아직 본 기사가 없습니다.
+					</p>
+
+					<div id="recent-viewed-list" class="hidden mt-1 divide-y divide-border"></div>
+				</div>
+			</aside>
+		</div>
 	)}
 </BaseLayout>
+
+<script>
+	import type { Article } from "@dansum/shared";
+	import { getFollowedSources, getFollowedCategories } from "../lib/follows";
+	import { getRecentlyViewedIds } from "../lib/recentlyViewed";
+	import { getArticles, getArticle } from "../lib/api";
+	import { renderCompactArticleRow } from "../lib/renderArticleCard";
+
+	// article/[id].astro의 "다른 기사"/"관련 보도" 카드와 같은 톤이지만, 이쪽은 localStorage
+	// 데이터라 SSR 불가 — feed.astro/bookmarks.astro와 동일하게 클라이언트에서 채운다.
+	async function loadFollowFeed() {
+		const list = document.getElementById("follow-feed-list");
+		const empty = document.getElementById("follow-feed-empty");
+		if (!list || !empty) return;
+
+		list.innerHTML = "";
+		list.classList.add("hidden");
+		empty.classList.add("hidden");
+
+		const sources = getFollowedSources();
+		const categories = getFollowedCategories();
+		if (sources.length === 0 && categories.length === 0) {
+			empty.classList.remove("hidden");
+			return;
+		}
+
+		const requests = [
+			...sources.map((source) => getArticles({ source, pageSize: 5 }).catch(() => null)),
+			...categories.map((category) =>
+				getArticles({ category, pageSize: 5 }).catch(() => null),
+			),
+		];
+		const results = await Promise.all(requests);
+
+		const byId = new Map<string, Article>();
+		for (const r of results) {
+			if (!r) continue;
+			for (const a of r.items) byId.set(a.id, a);
+		}
+		const merged = [...byId.values()]
+			.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+			.slice(0, 5);
+
+		if (merged.length === 0) {
+			empty.classList.remove("hidden");
+			return;
+		}
+		for (const a of merged) list.appendChild(renderCompactArticleRow(a));
+		list.classList.remove("hidden");
+	}
+
+	async function loadRecentlyViewed() {
+		const list = document.getElementById("recent-viewed-list");
+		const empty = document.getElementById("recent-viewed-empty");
+		if (!list || !empty) return;
+
+		list.innerHTML = "";
+		list.classList.add("hidden");
+		empty.classList.add("hidden");
+
+		const ids = getRecentlyViewedIds(5);
+		if (ids.length === 0) {
+			empty.classList.remove("hidden");
+			return;
+		}
+
+		// 최신 조회순으로 보여줘야 하므로 publishedAt으로 재정렬하지 않고 저장 순서(ids) 그대로 렌더
+		const results = await Promise.allSettled(ids.map((id) => getArticle(id)));
+		let rendered = 0;
+		for (const r of results) {
+			if (r.status === "fulfilled") {
+				list.appendChild(renderCompactArticleRow(r.value));
+				rendered++;
+			}
+		}
+
+		if (rendered === 0) {
+			empty.classList.remove("hidden");
+			return;
+		}
+		list.classList.remove("hidden");
+	}
+
+	document.addEventListener("astro:page-load", () => {
+		loadFollowFeed();
+		loadRecentlyViewed();
+	});
+</script>

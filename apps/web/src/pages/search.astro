@@ -2,16 +2,23 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import ArticleList from "../components/ArticleList.astro";
 import LoadMore from "../components/LoadMore.astro";
+import SortTabs from "../components/SortTabs.astro";
 import { getArticles } from "../lib/api";
 
 const q = (Astro.url.searchParams.get("q") ?? "").trim();
+
+// 검색은 기본이 관련도순 — sort 쿼리를 명시했을 때만 최신순/인기순으로 바꾼다.
+const rawSort = Astro.url.searchParams.get("sort");
+const sort: "relevance" | "latest" | "hot" =
+	rawSort === "hot" || rawSort === "latest" ? rawSort : "relevance";
+const apiSort = sort === "relevance" ? undefined : sort;
 
 let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
 let error: string | null = null;
 
 if (q) {
 	try {
-		articles = await getArticles({ q });
+		articles = await getArticles({ q, sort: apiSort });
 	} catch (e) {
 		error = e instanceof Error ? e.message : "검색에 실패했습니다";
 	}
@@ -66,8 +73,9 @@ if (q) {
 				<p class="text-[15px] text-text-secondary mb-3">
 					<span class="font-bold text-text">'{q}'</span> 검색 결과 {articles.total}건
 				</p>
+				<SortTabs basePath="/search" extraParams={{ q }} sort={sort} showRelevance />
 				<ArticleList articles={articles.items} />
-				<LoadMore hasMore={articles.hasMore} query={q} />
+				<LoadMore hasMore={articles.hasMore} query={q} sort={apiSort} />
 			</>
 		) : (
 			<p class="py-12 text-center text-text-secondary">

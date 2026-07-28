@@ -1,0 +1,52 @@
+---
+interface Props {
+	/** 쿼리스트링을 제외한 현재 페이지 경로(예: "/", "/category/finance", "/search") */
+	basePath: string;
+	/** sort 외에 유지해야 할 쿼리(예: 검색어 q) */
+	extraParams?: Record<string, string>;
+	sort: "relevance" | "latest" | "hot";
+	/** 검색 결과처럼 기본 정렬이 관련도순인 페이지에서만 "관련도순" 탭을 추가한다 */
+	showRelevance?: boolean;
+}
+
+const { basePath, extraParams, sort, showRelevance = false } = Astro.props;
+
+function hrefFor(sortParam: "latest" | "hot" | null): string {
+	const params = new URLSearchParams(extraParams);
+	if (sortParam) params.set("sort", sortParam);
+	const qs = params.toString();
+	return qs ? `${basePath}?${qs}` : basePath;
+}
+
+// showRelevance=false인 페이지(홈/카테고리/매체)는 "최신순"이 기본이라 쿼리 없이 href를 둔다.
+// showRelevance=true인 검색은 기본이 관련도순이라 "최신순"도 ?sort=latest를 명시해야 구분된다.
+const tabs = showRelevance
+	? [
+			{ key: "relevance" as const, label: "관련도순", href: hrefFor(null) },
+			{ key: "latest" as const, label: "최신순", href: hrefFor("latest") },
+			{ key: "hot" as const, label: "인기순", href: hrefFor("hot") },
+		]
+	: [
+			{ key: "latest" as const, label: "최신순", href: hrefFor(null) },
+			{ key: "hot" as const, label: "인기순", href: hrefFor("hot") },
+		];
+---
+
+<!-- 깃허브식 밑줄 탭. 서버에서 ?sort 쿼리로 판단하므로 클라이언트 JS 없이 SSR로 동작.
+     컨테이너 자체엔 밑줄을 두지 않는다 — 활성 탭의 border-b-2 하나로만 표시해야
+     바로 아래에 옅은 선이 겹쳐 두 줄처럼 보이는 걸 피할 수 있다. -->
+<div class="mb-3 flex items-center gap-4 text-sm">
+	{tabs.map((tab) => (
+		<a
+			href={tab.href}
+			class:list={[
+				"border-b-2 px-0.5 py-2 font-semibold transition-colors",
+				sort === tab.key
+					? "border-text text-text"
+					: "border-transparent text-text-secondary hover:text-text",
+			]}
+		>
+			{tab.label}
+		</a>
+	))}
+</div>

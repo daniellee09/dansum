@@ -1,0 +1,31 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleList from "../components/ArticleList.astro";
+import { getHotArticles } from "../lib/api";
+
+let articles: Awaited<ReturnType<typeof getHotArticles>> | null = null;
+let error: string | null = null;
+
+try {
+	articles = await getHotArticles(50);
+} catch (e) {
+	error = e instanceof Error ? e.message : "Hot 기사를 불러오지 못했습니다";
+}
+---
+
+<BaseLayout title="Hot - 단숨" description="최근 24시간 동안 여러 매체가 다룬 기사 50개">
+	<section>
+		<h2 class="text-lg font-bold mb-1">Hot</h2>
+		<p class="text-[13px] text-text-secondary mb-3">
+			최근 24시간 동안 여러 매체가 다룬 기사 50개
+		</p>
+
+		{error ? (
+			<div class="py-12 text-center">
+				<p class="text-text-secondary">{error}</p>
+			</div>
+		) : (
+			<ArticleList articles={articles ?? []} />
+		)}
+	</section>
+</BaseLayout>

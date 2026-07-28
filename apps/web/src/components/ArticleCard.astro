@@ -10,7 +10,8 @@ interface Props {
 const { article } = Astro.props;
 ---
 
-<!-- 주의: LoadMore.astro의 renderCard()와 마크업 중복 — 한쪽 수정 시 반드시 동기화 -->
+<!-- 주의: lib/renderArticleCard.ts의 renderArticleCard()와 마크업 중복 — 한쪽 수정 시 반드시 동기화
+     (LoadMore·북마크·내 피드 페이지는 클라이언트에서 그 함수로 이 마크업을 그대로 재현한다) -->
 <!-- 기사 사이는 목록의 구분선(divide-y)이 나누고, 칸 안쪽은 요약 패널까지 갖춘 구성.
      -mx-4 px-4: 호버 배경을 본문보다 좌우로 넓혀 "행 전체"가 선택된 느낌을 준다.
      (ArticleList도 같은 값으로 확장해야 구분선과 폭이 맞는다) -->
@@ -26,7 +27,7 @@ const { article } = Astro.props;
 				size={26}
 			/>
 		</a>
-		<div class="min-w-0 text-sm leading-tight">
+		<div class="min-w-0 flex-1 text-sm leading-tight">
 			<div class="flex items-center gap-x-2">
 				<a
 					href={`/source/${article.sourceId}`}
@@ -45,6 +46,19 @@ const { article } = Astro.props;
 				{formatRelativeTime(article.publishedAt)}
 			</time>
 		</div>
+
+		<button
+			type="button"
+			data-bookmark-toggle
+			data-article-id={article.id}
+			aria-label="북마크"
+			aria-pressed="false"
+			class="bookmark-btn shrink-0 -mr-1.5 -mt-1 w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:text-text hover:bg-surface-alt transition-colors"
+		>
+			<svg data-bookmark-icon class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12v16l-6-4-6 4V4z" />
+			</svg>
+		</button>
 	</div>
 
 	<a href={`/article/${article.id}`} class="block read-link mt-3.5">

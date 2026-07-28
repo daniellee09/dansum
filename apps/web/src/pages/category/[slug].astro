@@ -2,6 +2,7 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ArticleList from "../../components/ArticleList.astro";
 import LoadMore from "../../components/LoadMore.astro";
+import SortTabs from "../../components/SortTabs.astro";
 import { getArticles } from "../../lib/api";
 import { CATEGORY_LABELS } from "@dansum/shared";
 import type { Category } from "@dansum/shared";
@@ -11,12 +12,13 @@ const { slug } = Astro.params;
 if (!slug) return Astro.redirect("/");
 
 const categoryName = CATEGORY_LABELS[slug as Category] ?? slug;
+const sort = Astro.url.searchParams.get("sort") === "hot" ? "hot" : "latest";
 
 let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
 let error: string | null = null;
 
 try {
-	articles = await getArticles({ category: slug });
+	articles = await getArticles({ category: slug, sort });
 } catch (e) {
 	error = e instanceof Error ? e.message : "Failed to load articles";
 }
@@ -27,15 +29,28 @@ try {
 	description={`${categoryName} 관련 최신 경제 뉴스 AI 요약`}
 >
 	<section>
-		<h2 class="text-lg font-bold mb-3">{categoryName}</h2>
+		<div class="mb-3 flex items-center justify-between gap-2.5">
+			<h2 class="text-lg font-bold">{categoryName}</h2>
+			<button
+				type="button"
+				data-follow-toggle
+				data-follow-type="category"
+				data-follow-value={slug}
+				aria-pressed="false"
+				class="follow-btn shrink-0 rounded-full border border-border px-3.5 py-1.5 text-[13px] font-semibold text-text-secondary transition-colors hover:border-text-secondary hover:text-text aria-pressed:border-brand aria-pressed:text-brand"
+			>
+				팔로우
+			</button>
+		</div>
 		{error ? (
 			<div class="py-12 text-center">
 				<p class="text-text-secondary">{error}</p>
 			</div>
 		) : articles ? (
 			<>
+				<SortTabs basePath={`/category/${slug}`} sort={sort} />
 				<ArticleList articles={articles.items} />
-				<LoadMore hasMore={articles.hasMore} category={slug} />
+				<LoadMore hasMore={articles.hasMore} category={slug} sort={sort} />
 			</>
 		) : null}
 	</section>

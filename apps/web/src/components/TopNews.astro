@@ -111,17 +111,24 @@ const { clusters } = Astro.props;
 									</p>
 
 									<!-- 대표 이미지: 기사 아래에 크게. 원본이 500~660px대라 폭을 꽉 채우면
-									     확대돼 뭉개진다 → 원본 크기(최대 컬럼 폭·높이 340px)로만 두고 프레임 안에서 가운데 정렬.
+									     확대돼 뭉개진다 → object-scale-down으로 원본보다 키우지 않고, 프레임(높이 340px
+									     고정)의 남는 좌우 칸은 같은 사진을 확대·블러한 배경으로 채운다(레터박스 방지).
 									     없거나 로드 실패하면 프레임째 사라진다(onerror). -->
 									{a.imageUrl && (
-										<div class="mt-3 overflow-hidden rounded-md border border-border bg-surface-alt">
+										<div class="relative mt-3 h-[340px] overflow-hidden rounded-md border border-border bg-surface-alt">
+											<div
+												class="absolute inset-0 scale-110 bg-cover bg-center blur-2xl brightness-75"
+												style={{ backgroundImage: `url("${a.imageUrl}")` }}
+												aria-hidden="true"
+											>
+											</div>
 											<img
 												src={a.imageUrl}
 												alt=""
 												loading="lazy"
 												decoding="async"
 												referrerpolicy="no-referrer"
-												class="mx-auto block max-h-[340px] max-w-full object-contain"
+												class="relative mx-auto block h-full max-w-full object-scale-down"
 												onerror="this.closest('div').remove()"
 											/>
 										</div>

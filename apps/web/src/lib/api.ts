@@ -22,6 +22,8 @@ export async function getArticles(options?: {
 	/** 매체 필터(sources.id) */
 	source?: string;
 	q?: string;
+	/** "hot" = 인기순, "latest" = 최신순. 검색(q)에서 생략하면 관련도순(기본) */
+	sort?: "latest" | "hot";
 }) {
 	const params = new URLSearchParams();
 	if (options?.page) params.set("page", String(options.page));
@@ -29,6 +31,7 @@ export async function getArticles(options?: {
 	if (options?.category) params.set("category", options.category);
 	if (options?.source) params.set("source", options.source);
 	if (options?.q) params.set("q", options.q);
+	if (options?.sort) params.set("sort", options.sort);
 
 	const query = params.toString();
 	return fetchApi<PaginatedResponse<Article>>(
@@ -38,6 +41,11 @@ export async function getArticles(options?: {
 
 export async function getTopClusters(limit = 6) {
 	return fetchApi<NewsCluster[]>(`/api/top?limit=${limit}`);
+}
+
+/** "Hot!": 최근 24시간 안에서 보도량 점수가 가장 높은 개별 기사 상위 limit개. 캐시 없이 항상 최신. */
+export async function getHotArticles(limit = 50) {
+	return fetchApi<Article[]>(`/api/hot?limit=${limit}`);
 }
 
 export async function getArticle(id: string) {
