@@ -10,7 +10,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
 	if (!articleId) {
 		return json({ success: false, error: "articleId가 필요합니다" }, { status: 400 });
 	}
-	const comments = await listComments(locals.runtime.env.DB, articleId, locals.user?.id ?? null);
+	const sort = url.searchParams.get("sort") === "top" ? "top" : "latest";
+	const comments = await listComments(locals.runtime.env.DB, articleId, locals.user?.id ?? null, sort);
 	return json({ success: true, comments });
 };
 

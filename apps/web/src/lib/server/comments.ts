@@ -34,6 +34,7 @@ export async function listComments(
 	db: D1Database,
 	articleId: string,
 	viewerId: string | null,
+	sort: "latest" | "top" = "latest",
 ): Promise<CommentDTO[]> {
 	const { results: rows } = await db
 		.prepare(
@@ -87,8 +88,13 @@ export async function listComments(
 		if (parent && child) parent.replies.push(child);
 	}
 
-	// 최상위는 추천순, 대댓글은 작성순 그대로 유지
-	topLevel.sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt));
+	// 최상위만 정렬 기준을 바꾼다(대댓글은 스레드 흐름을 위해 항상 작성순 유지).
+	// 동점/동시각일 땐 최신이 위로 오도록 createdAt 내림차순을 항상 2차 기준으로 둔다.
+	if (sort === "top") {
+		topLevel.sort((a, b) => b.score - a.score || b.createdAt.localeCompare(a.createdAt));
+	} else {
+		topLevel.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+	}
 	return topLevel;
 }
 

@@ -33,8 +33,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 	return node;
 }
 
-async function fetchComments(articleId: string): Promise<CommentDTO[]> {
-	const res = await fetch(`/api/comments?articleId=${encodeURIComponent(articleId)}`);
+async function fetchComments(articleId: string, sort: "latest" | "top"): Promise<CommentDTO[]> {
+	const res = await fetch(`/api/comments?articleId=${encodeURIComponent(articleId)}&sort=${sort}`);
 	if (!res.ok) return [];
 	const data = (await res.json()) as { comments?: CommentDTO[] };
 	return Array.isArray(data.comments) ? data.comments : [];
@@ -162,8 +162,10 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 	const formWrap = container.querySelector<HTMLElement>("[data-comment-form-wrap]");
 	if (!listEl) return;
 
+	let sort: "latest" | "top" = "latest";
+
 	const refresh = async () => {
-		const comments = await fetchComments(articleId);
+		const comments = await fetchComments(articleId, sort);
 		if (countEl) countEl.textContent = String(countAll(comments));
 		listEl.innerHTML = "";
 		if (comments.length === 0) {
@@ -174,6 +176,36 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 		for (const c of comments) wrap.appendChild(renderComment(c, articleId, 0, refresh));
 		listEl.appendChild(wrap);
 	};
+
+	// 정렬 탭(기본 최신순). SortTabs.astro와 같은 밑줄 탭 시각 언어를 쓰되, 여기는
+	// 페이지 이동 없이 JS로 다시 불러오는 위젯이라 <a href> 대신 버튼으로 구현한다.
+	const SORT_TABS: Array<{ key: "latest" | "top"; label: string }> = [
+		{ key: "latest", label: "최신순" },
+		{ key: "top", label: "추천순" },
+	];
+	const sortBar = el("div", "mb-3 flex items-center gap-4 text-sm");
+	const tabButtons = SORT_TABS.map((tab) => {
+		const btn = el("button", undefined, tab.label);
+		btn.type = "button";
+		sortBar.appendChild(btn);
+		return btn;
+	});
+	const syncTabStyles = () => {
+		tabButtons.forEach((btn, i) => {
+			const active = SORT_TABS[i].key === sort;
+			btn.className = `border-b-2 px-0.5 py-2 font-semibold transition-colors ${active ? "border-text text-text" : "border-transparent text-text-secondary hover:text-text"}`;
+		});
+	};
+	tabButtons.forEach((btn, i) => {
+		btn.addEventListener("click", () => {
+			if (sort === SORT_TABS[i].key) return;
+			sort = SORT_TABS[i].key;
+			syncTabStyles();
+			refresh();
+		});
+	});
+	syncTabStyles();
+	listEl.before(sortBar);
 
 	if (formWrap) {
 		formWrap.innerHTML = "";
