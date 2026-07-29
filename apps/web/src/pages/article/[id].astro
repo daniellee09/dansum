@@ -238,8 +238,10 @@ if (!article && !error) return Astro.redirect("/");
 				</div>
 			</article>
 
-			<!-- 우측 사이드바: 매체 정보 · 이 매체의 다른 기사 · 관련 보도(타 매체) -->
-			<aside class="mt-8 space-y-4 min-[87.5rem]:mt-0 min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start">
+			<!-- 우측 사이드바: 매체 정보 · 이 매체의 다른 기사 · 관련 보도(타 매체).
+			     본문이 훨씬 길어서 사이드바 내용을 다 보려면 끝까지 스크롤해야 하는 문제를 피하려고,
+			     사이드바 자체 높이를 뷰포트로 제한하고 내부에서만 스크롤되게 한다(overflow-y-auto). -->
+			<aside class="mt-8 space-y-4 min-[87.5rem]:mt-0 min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start min-[87.5rem]:max-h-[calc(100vh-var(--header-h)-3rem)] min-[87.5rem]:overflow-y-auto">
 				<div class="rounded-2xl bg-surface-alt p-5">
 					<div class="flex items-center gap-3">
 						<a href={`/source/${article.sourceId}`} tabindex="-1" aria-hidden="true" class="shrink-0">

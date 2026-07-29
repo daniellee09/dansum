@@ -50,7 +50,9 @@ try {
 				</section>
 			</div>
 
-			<aside class="hidden min-[87.5rem]:block min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start space-y-4">
+			<!-- 본문이 훨씬 길어서 사이드바 내용을 다 보려면 끝까지 스크롤해야 하는 문제를 피하려고,
+			     사이드바 자체 높이를 뷰포트로 제한하고 내부에서만 스크롤되게 한다(overflow-y-auto). -->
+			<aside class="hidden min-[87.5rem]:block min-[87.5rem]:sticky min-[87.5rem]:top-[calc(var(--header-h)+1.5rem)] min-[87.5rem]:self-start min-[87.5rem]:max-h-[calc(100vh-var(--header-h)-3rem)] min-[87.5rem]:overflow-y-auto space-y-4">
 				<div class="rounded-2xl bg-surface-alt p-5">
 					<h2 class="text-sm font-bold uppercase tracking-wider text-text-secondary">
 						팔로우한 소식

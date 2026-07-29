@@ -31,20 +31,21 @@ html {
 	-moz-osx-font-smoothing: grayscale;
 }
 
-/* 다크 모드: GitHub Primer 다크 — 카드는 배경과 같은 톤이고 테두리로 구분된다 */
+/* 다크 모드: 우측 사이드바 카드에 쓰던 톤(#1a1a1b)을 전체 배경으로 확장 —
+   카드/중첩 패널은 그보다 한 단계 밝은 색으로 구분한다 */
 html.dark {
-	--color-primary: #f0f6fc;
-	--color-accent: #9198a1;
+	--color-primary: #d7dadc;
+	--color-accent: #818384;
 	/* 어두운 배경 대비 위해 밝은 링크 블루 */
 	--color-brand: #4493f8;
 	/* 어두운 배경용 밝은 레드 */
 	--color-hot: #f85149;
-	--color-bg: #0d1117;
-	--color-surface: #0d1117;
-	--color-surface-alt: #151b23;
-	--color-text: #f0f6fc;
-	--color-text-secondary: #9198a1;
-	--color-border: #3d444d;
+	--color-bg: #1a1a1b;
+	--color-surface: #1a1a1b;
+	--color-surface-alt: #272729;
+	--color-text: #d7dadc;
+	--color-text-secondary: #818384;
+	--color-border: #3a3a3c;
 }
 
 /* 스크롤바: OS 기본(두꺼운 트랙+썸)을 걷어내고, 마우스를 올렸을 때만 얇은 막대가 보이게 */
