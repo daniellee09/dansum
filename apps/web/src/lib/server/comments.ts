@@ -1,9 +1,11 @@
 /** 댓글(1단 대댓글) + 추천/비추천 + 답글 알림. Phase 1의 db.ts와 분리해 응집도를 유지한다. */
 
+import { awardKarma } from "./karma";
+
 export interface CommentDTO {
 	id: string;
 	articleId: string;
-	author: { id: string; nickname: string };
+	author: { id: string; nickname: string; karma: number };
 	parentCommentId: string | null;
 	body: string;
 	status: "active" | "deleted";
@@ -19,6 +21,7 @@ interface CommentRow {
 	article_id: string;
 	user_id: string;
 	nickname: string;
+	karma: number;
 	parent_comment_id: string | null;
 	body: string;
 	status: string;
@@ -38,7 +41,7 @@ export async function listComments(
 ): Promise<CommentDTO[]> {
 	const { results: rows } = await db
 		.prepare(
-			`SELECT c.id, c.article_id, c.user_id, u.nickname, c.parent_comment_id, c.body, c.status, c.score, c.created_at
+			`SELECT c.id, c.article_id, c.user_id, u.nickname, u.karma, c.parent_comment_id, c.body, c.status, c.score, c.created_at
 			 FROM comments c JOIN users u ON u.id = c.user_id
 			 WHERE c.article_id = ?
 			 ORDER BY c.created_at ASC`,
@@ -66,7 +69,7 @@ export async function listComments(
 		const dto: CommentDTO = {
 			id: row.id,
 			articleId: row.article_id,
-			author: { id: row.user_id, nickname: row.nickname },
+			author: { id: row.user_id, nickname: row.nickname, karma: row.karma },
 			parentCommentId: row.parent_comment_id,
 			body: row.status === "deleted" ? "" : row.body,
 			status: row.status as "active" | "deleted",
@@ -154,16 +157,21 @@ export async function voteComment(
 	userId: string,
 	value: 1 | -1,
 ): Promise<{ ok: true; score: number } | { ok: false; error: string }> {
-	const comment = await db.prepare("SELECT id FROM comments WHERE id = ?").bind(commentId).first();
+	const comment = await db
+		.prepare("SELECT user_id FROM comments WHERE id = ?")
+		.bind(commentId)
+		.first<{ user_id: string }>();
 	if (!comment) return { ok: false, error: "댓글을 찾을 수 없습니다" };
+	if (comment.user_id === userId) return { ok: false, error: "본인 댓글에는 투표할 수 없습니다" };
 
 	const existing = await db
 		.prepare("SELECT value FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?")
 		.bind(userId, commentId)
 		.first<{ value: number }>();
+	const oldValue = existing?.value ?? 0;
+	const newValue = existing?.value === value ? 0 : value; // 같은 값을 다시 누르면 취소
 
-	if (existing?.value === value) {
-		// 같은 값을 다시 누르면 추천/비추천 취소
+	if (newValue === 0) {
 		await db
 			.prepare("DELETE FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?")
 			.bind(userId, commentId)
@@ -174,7 +182,7 @@ export async function voteComment(
 				`INSERT INTO votes (user_id, target_type, target_id, value) VALUES (?, 'comment', ?, ?)
 				 ON CONFLICT(user_id, target_type, target_id) DO UPDATE SET value = excluded.value`,
 			)
-			.bind(userId, commentId, value)
+			.bind(userId, commentId, newValue)
 			.run();
 	}
 
@@ -184,6 +192,8 @@ export async function voteComment(
 		.first<{ score: number }>();
 	const score = scoreRow?.score ?? 0;
 	await db.prepare("UPDATE comments SET score = ? WHERE id = ?").bind(score, commentId).run();
+
+	await awardKarma(db, comment.user_id, newValue - oldValue, "comment_vote_changed", "comment", commentId);
 
 	return { ok: true, score };
 }

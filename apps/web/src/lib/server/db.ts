@@ -12,6 +12,7 @@ interface UserRow {
 	nickname: string;
 	avatar_url: string | null;
 	status: string;
+	karma: number;
 	nickname_changed_at: string | null;
 	created_at: string;
 }

@@ -4,14 +4,14 @@
  * 작성/투표/삭제 후에는 매번 목록을 다시 불러와 그린다(부분 DOM 패치 대신 전체 재렌더로 단순화).
  */
 
-import { formatRelativeTime } from "@dansum/shared";
+import { formatRelativeTime, getGrade } from "@dansum/shared";
 import { isLoggedIn } from "./auth";
 import { getInitialAvatar } from "./userAvatar";
 
 interface CommentDTO {
 	id: string;
 	articleId: string;
-	author: { id: string; nickname: string };
+	author: { id: string; nickname: string; karma: number };
 	parentCommentId: string | null;
 	body: string;
 	status: "active" | "deleted";
@@ -58,8 +58,12 @@ function renderComment(c: CommentDTO, articleId: string, depth: number, refresh:
 	const body = el("div", "min-w-0 flex-1");
 	wrap.appendChild(body);
 
+	const grade = getGrade(c.author.karma);
 	const head = el("div", "flex items-center gap-2 text-sm");
 	head.appendChild(el("span", "font-semibold text-text", c.author.nickname));
+	if (grade.key !== "newbie") {
+		head.appendChild(el("span", "text-[11px] font-semibold text-brand", grade.label));
+	}
 	head.appendChild(el("span", "text-text-secondary text-xs", formatRelativeTime(c.createdAt)));
 	body.appendChild(head);
 
@@ -73,27 +77,32 @@ function renderComment(c: CommentDTO, articleId: string, depth: number, refresh:
 	if (c.status !== "deleted") {
 		const actions = el("div", "mt-2 flex items-center gap-3 text-xs text-text-secondary");
 
-		const upBtn = el("button", `hover:text-brand transition-colors ${c.viewerVote === 1 ? "text-brand font-bold" : ""}`, "▲");
-		upBtn.type = "button";
 		const scoreEl = el("span", "tabular-nums", String(c.score));
-		const downBtn = el("button", `hover:text-hot transition-colors ${c.viewerVote === -1 ? "text-hot font-bold" : ""}`, "▼");
-		downBtn.type = "button";
+		if (c.isOwner) {
+			// 본인 댓글은 투표할 수 없으므로(카르마 자기적립 방지) 버튼 없이 점수만 보여준다
+			actions.appendChild(scoreEl);
+		} else {
+			const upBtn = el("button", `hover:text-brand transition-colors ${c.viewerVote === 1 ? "text-brand font-bold" : ""}`, "▲");
+			upBtn.type = "button";
+			const downBtn = el("button", `hover:text-hot transition-colors ${c.viewerVote === -1 ? "text-hot font-bold" : ""}`, "▼");
+			downBtn.type = "button";
 
-		const vote = async (value: 1 | -1) => {
-			if (!isLoggedIn()) {
-				window.location.href = `/login?redirect=${encodeURIComponent(location.pathname)}`;
-				return;
-			}
-			await fetch(`/api/comments/${c.id}/vote`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ value }),
-			}).catch(() => {});
-			refresh();
-		};
-		upBtn.addEventListener("click", () => vote(1));
-		downBtn.addEventListener("click", () => vote(-1));
-		actions.append(upBtn, scoreEl, downBtn);
+			const vote = async (value: 1 | -1) => {
+				if (!isLoggedIn()) {
+					window.location.href = `/login?redirect=${encodeURIComponent(location.pathname)}`;
+					return;
+				}
+				await fetch(`/api/comments/${c.id}/vote`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ value }),
+				}).catch(() => {});
+				refresh();
+			};
+			upBtn.addEventListener("click", () => vote(1));
+			downBtn.addEventListener("click", () => vote(-1));
+			actions.append(upBtn, scoreEl, downBtn);
+		}
 
 		if (depth === 0) {
 			const replyBtn = el("button", "hover:text-text transition-colors", "답글");

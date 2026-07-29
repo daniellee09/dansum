@@ -5,6 +5,8 @@ export {
 	generateSessionToken,
 	hashToken,
 } from "./auth.js";
+export { getGrade } from "./grade.js";
+export type { Grade } from "./grade.js";
 export { normalizeSections } from "./sections.js";
 export { formatKoreanDate, formatRelativeTime, toISOString } from "./date.js";
 export {

@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { createComment, createReplyNotification, listComments } from "../../../lib/server/comments";
+import { checkAndAwardBadges } from "../../../lib/server/karma";
 import { json, unauthorized } from "../../../lib/server/http";
 
 const MAX_COMMENTS_PER_WINDOW = 10;
@@ -55,6 +56,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	await CACHE.put(rateKey, String(count + 1), { expirationTtl: RATE_WINDOW_SECONDS });
+	await checkAndAwardBadges(DB, locals.user.id);
 
 	if (result.notifyUserId) {
 		await createReplyNotification(DB, {

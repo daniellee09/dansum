@@ -24,6 +24,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 const communityItems = [
 	{ label: "내 피드", icon: "feed", href: "/feed" },
 	{ label: "북마크", icon: "bookmark", href: "/bookmarks" },
+	{ label: "랭킹", icon: "ranking", href: "/ranking" },
 	{ label: "토론", icon: "chat" },
 	{ label: "키워드 알림", icon: "bell" },
 ];
@@ -168,6 +169,9 @@ const communityItems = [
 								)}
 								{item.icon === "bookmark" && (
 									<path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12v16l-6-4-6 4V4z" />
+								)}
+								{item.icon === "ranking" && (
+									<path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 6H4v1a4 4 0 003 3.87M17 6h3v1a4 4 0 01-3 3.87" />
 								)}
 							</svg>
 							<span class="flex-1">{item.label}</span>

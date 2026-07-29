@@ -1,9 +1,10 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import ArticleCard from "../components/ArticleCard.astro";
-import { CATEGORY_LABELS, formatKoreanDate } from "@dansum/shared";
+import { CATEGORY_LABELS, formatKoreanDate, getGrade } from "@dansum/shared";
 import type { Category } from "@dansum/shared";
-import { listBookmarkIds, listFollows, getSourceNames } from "../lib/server/db";
+import { listBookmarkIds, listFollows, getSourceNames, findUserById } from "../lib/server/db";
+import { getUserBadges } from "../lib/server/karma";
 import { getInitialAvatar } from "../lib/userAvatar";
 import { getArticle } from "../lib/api";
 
@@ -13,7 +14,14 @@ if (!user) return Astro.redirect("/login?redirect=/mypage");
 const db = Astro.locals.runtime.env.DB;
 const BOOKMARK_PREVIEW = 5;
 
-const [bookmarkIds, follows] = await Promise.all([listBookmarkIds(db, user.id), listFollows(db, user.id)]);
+const [bookmarkIds, follows, userRow, badges] = await Promise.all([
+	listBookmarkIds(db, user.id),
+	listFollows(db, user.id),
+	findUserById(db, user.id),
+	getUserBadges(db, user.id),
+]);
+const karma = userRow?.karma ?? 0;
+const grade = getGrade(karma);
 
 const sourceNames = await getSourceNames(db, follows.sources);
 
@@ -40,6 +48,9 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center gap-2">
 					<h2 id="profile-nickname" class="text-lg font-bold text-text truncate">{user.nickname}</h2>
+					<span class="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold text-brand">
+						{grade.label}
+					</span>
 					<button
 						type="button"
 						id="edit-nickname-toggle"
@@ -49,7 +60,9 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 					</button>
 				</div>
 				<p class="text-sm text-text-secondary truncate">{user.email}</p>
-				<p class="text-xs text-text-secondary mt-0.5">{formatKoreanDate(user.createdAt)} 가입</p>
+				<p class="text-xs text-text-secondary mt-0.5">
+					{formatKoreanDate(user.createdAt)} 가입 · 카르마 {karma}
+				</p>
 			</div>
 		</div>
 
@@ -78,6 +91,28 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 			</button>
 			<span id="edit-nickname-error" class="hidden text-sm text-hot"></span>
 		</form>
+
+		<!-- 배지 -->
+		<div>
+			<h3 class="text-sm font-bold text-text-secondary mb-3">배지</h3>
+			{badges.length === 0 ? (
+				<p class="text-sm text-text-secondary">
+					아직 획득한 배지가 없습니다. 댓글을 남기고 추천을 받아보세요.
+				</p>
+			) : (
+				<div class="flex flex-wrap gap-2">
+					{badges.map((badge) => (
+						<span
+							class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-sm"
+							title={badge.description ?? undefined}
+						>
+							<span aria-hidden="true">{badge.icon}</span>
+							{badge.name}
+						</span>
+					))}
+				</div>
+			)}
+		</div>
 
 		<!-- 팔로우 관리 -->
 		<div>
