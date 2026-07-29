@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
 
 	const email = body.email?.trim().toLowerCase() ?? "";
 	const password = body.password ?? "";
-	if (!email || !password) {
+	if (!email || !password || password.length > 200) {
 		return json({ success: false, error: INVALID_CREDENTIALS }, { status: 400 });
 	}
 

@@ -46,10 +46,13 @@ export async function setupNotificationBell(): Promise<void> {
 				fetch(`/api/me/notifications/${n.id}/read`, { method: "POST" }).catch(() => {});
 			});
 			const title = n.payload.articleTitle ?? "삭제된 기사";
-			a.innerHTML = "";
 			const line1 = document.createElement("p");
 			line1.className = "text-text";
-			line1.innerHTML = `<span class="font-semibold">${n.payload.fromNickname}</span>님이 댓글에 답글을 남겼습니다`;
+			// fromNickname은 다른 유저가 정한 값이라 innerHTML로 합치지 않고 textContent로만 넣는다(XSS 방지)
+			const nicknameEl = document.createElement("span");
+			nicknameEl.className = "font-semibold";
+			nicknameEl.textContent = n.payload.fromNickname;
+			line1.append(nicknameEl, "님이 댓글에 답글을 남겼습니다");
 			const line2 = document.createElement("p");
 			line2.className = "text-text-secondary text-xs mt-0.5 truncate";
 			line2.textContent = title;

@@ -5,6 +5,8 @@ import { json } from "../../../lib/server/http";
 import { SESSION_COOKIE } from "../../../middleware";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_REGISTRATIONS_PER_WINDOW = 5;
+const RATE_WINDOW_SECONDS = 60 * 60;
 
 export const POST: APIRoute = async ({ request, cookies, locals }) => {
 	let body: { email?: string; password?: string; nickname?: string };
@@ -21,14 +23,26 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
 	if (!EMAIL_RE.test(email)) {
 		return json({ success: false, error: "이메일 형식이 올바르지 않습니다" }, { status: 400 });
 	}
-	if (password.length < 8) {
-		return json({ success: false, error: "비밀번호는 8자 이상이어야 합니다" }, { status: 400 });
+	if (password.length < 8 || password.length > 200) {
+		return json({ success: false, error: "비밀번호는 8~200자여야 합니다" }, { status: 400 });
 	}
 	if (nickname.length < 2 || nickname.length > 20) {
 		return json({ success: false, error: "닉네임은 2~20자여야 합니다" }, { status: 400 });
 	}
 
-	const { DB } = locals.runtime.env;
+	const { DB, CACHE } = locals.runtime.env;
+
+	// IP당 시간당 가입 시도 제한(대량 계정 생성 방지). Cloudflare 뒤에선 항상 이 헤더가 온다.
+	const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+	const rateKey = `register-attempts:${ip}`;
+	const attempts = Number((await CACHE.get(rateKey)) ?? "0");
+	if (attempts >= MAX_REGISTRATIONS_PER_WINDOW) {
+		return json(
+			{ success: false, error: "가입 시도가 너무 많습니다. 잠시 후 다시 시도해주세요" },
+			{ status: 429 },
+		);
+	}
+	await CACHE.put(rateKey, String(attempts + 1), { expirationTtl: RATE_WINDOW_SECONDS });
 
 	if (await findUserByEmail(DB, email)) {
 		return json({ success: false, error: "이미 가입된 이메일입니다" }, { status: 409 });
