@@ -4,6 +4,10 @@ import { getGrade } from "@dansum/shared";
 import { getRanking } from "../lib/server/karma";
 import { getInitialAvatar } from "../lib/userAvatar";
 
+// 랭킹 노출 방식(등급 구간? 카르마 상위 N? 기간별?)이 아직 확정되지 않아 페이지를 잠시 막아둔다.
+// 구현/스키마는 그대로 남겨뒀으니 기획이 정해지면 이 리다이렉트만 지우면 된다.
+return Astro.redirect("/");
+
 // 매 요청마다 정렬 쿼리를 돌리지 않도록 짧게 스냅샷 캐시(apps/api의 kvCache 패턴과 같은 아이디어).
 const CACHE_KEY = "ranking:top50";
 const CACHE_TTL = 300;

@@ -21,10 +21,10 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 /** href가 있으면 실제 링크, 없으면 아직 라우트가 없는 항목이라 disabled + "준비 중" 배지 */
+// 랭킹은 기획이 아직 안 끝나 메뉴에서 뺐다(ranking.astro 자체도 "/"로 리다이렉트되게 막아둠).
 const communityItems = [
 	{ label: "내 피드", icon: "feed", href: "/feed" },
 	{ label: "북마크", icon: "bookmark", href: "/bookmarks" },
-	{ label: "랭킹", icon: "ranking", href: "/ranking" },
 	{ label: "토론", icon: "chat" },
 	{ label: "키워드 알림", icon: "bell" },
 ];
