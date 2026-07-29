@@ -10,20 +10,7 @@ const logoLetters = "DANSUM".split("");
 	<div class="h-full px-4 sm:px-5">
 		<div class="flex lg:grid lg:grid-cols-[1fr_minmax(0,30rem)_1fr] items-center gap-3 h-full">
 			<div class="flex items-center gap-2 shrink-0 min-w-0">
-				<button
-					id="sidebar-toggle"
-					type="button"
-					aria-label="메뉴 열기"
-					aria-expanded="false"
-					aria-controls="app-sidebar"
-					class="w-9 h-9 -ml-1.5 shrink-0 flex items-center justify-center rounded-md text-text-secondary hover:text-text hover:bg-surface-alt transition-colors"
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" class="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16" />
-					</svg>
-				</button>
-
-				<!-- 좁은 화면에선 워드마크를 숨기고 검색창에 폭을 양보한다(레딧처럼 햄버거만 남김) -->
+				<!-- 좁은 화면에선 워드마크를 숨기고 검색창에 폭을 양보한다(레딧처럼) -->
 				<a href="/" class="header-brand hidden sm:block shrink-0">
 					<h1
 						class="text-2xl font-extrabold tracking-tight text-text leading-none"
@@ -132,10 +119,14 @@ const logoLetters = "DANSUM".split("");
 							role="menuitem"
 							class="flex w-full items-center gap-3 px-3.5 py-2 text-sm text-text hover:bg-surface-alt transition-colors"
 						>
-							<svg class="w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<svg id="profile-menu-theme-icon-moon" class="w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
 							</svg>
-							다크 모드 전환
+							<svg id="profile-menu-theme-icon-sun" class="hidden w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<circle cx="12" cy="12" r="4" />
+								<path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+							</svg>
+							<span id="profile-menu-theme-label">다크 모드 전환</span>
 						</button>
 
 						<div class="my-1.5 border-t border-border"></div>

@@ -101,7 +101,7 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 		>
 			<main
 				class:list={[
-					"flex-1 w-full mx-auto px-5 py-7 max-w-[52rem]",
+					"px-5 py-7 max-w-[52rem] transition-[margin-left] duration-200 ease-out",
 					wideWidth && "app-shell--wide-main",
 				]}
 			>
@@ -110,10 +110,9 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 			<Footer />
 		</div>
 
-		<!-- wide 페이지(기사 상세 70.5rem, 홈 74rem 등): <main>이 헤더 검색창과 가운데 정렬되면
-		     본문+사이드바 덩어리도 그대로 가운데 정렬된다. --content-w와 <main>의 max-w가 항상
-		     같은 --wide-w 값을 쓰도록 묶어야 세로 중심선이 어긋나지 않는다(article/[id].astro,
-		     index.astro 참고). -->
+		<!-- wide 페이지(기사 상세 70.5rem, 홈 74rem 등): <main>의 max-w를 늘리는 동시에
+		     --content-w도 같이 늘려야 global.css의 margin-left 공식이 이 폭 기준으로
+		     본문을 가운데에 둔다(article/[id].astro, index.astro 참고). -->
 		<style>
 			@media (min-width: 87.5rem) {
 				.app-shell--wide {
@@ -160,11 +159,24 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 
 		<script>
 			// 페이지 전환(View Transitions) 후 헤더가 새로 그려지므로 매 page-load마다 재바인딩.
-			// 토글은 프로필 드롭다운(Header.astro) 안의 "다크 모드 전환" 항목 하나뿐이라
-			// 별도 아이콘 상태 동기화는 필요 없다.
+			// 토글은 프로필 드롭다운(Header.astro) 안의 "다크/라이트 모드 전환" 항목 하나뿐이라
+			// 여기서 아이콘(달↔해)과 라벨 텍스트를 함께 동기화한다.
 			function setupThemeToggle() {
 				const toggle = document.getElementById("profile-menu-theme");
 				const html = document.documentElement;
+				const iconMoon = document.getElementById("profile-menu-theme-icon-moon");
+				const iconSun = document.getElementById("profile-menu-theme-icon-sun");
+				const label = document.getElementById("profile-menu-theme-label");
+
+				// 아이콘·라벨은 "누르면 전환될 모드"를 가리킨다(라이트일 땐 달+"다크 모드 전환",
+				// 다크일 땐 해+"라이트 모드 전환").
+				function syncTheme(dark: boolean) {
+					iconMoon?.classList.toggle("hidden", dark);
+					iconSun?.classList.toggle("hidden", !dark);
+					if (label) label.textContent = dark ? "라이트 모드 전환" : "다크 모드 전환";
+				}
+
+				syncTheme(html.classList.contains("dark"));
 
 				toggle?.addEventListener("click", () => {
 					const dark = !html.classList.contains("dark");
@@ -173,6 +185,7 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 					window.setTimeout(() => html.classList.remove("theme-transition"), 320);
 					html.classList.toggle("dark", dark);
 					localStorage.setItem("theme", dark ? "dark" : "light");
+					syncTheme(dark);
 				});
 			}
 

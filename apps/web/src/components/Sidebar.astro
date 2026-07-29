@@ -37,6 +37,31 @@ const communityItems = [
 >
 </div>
 
+<!-- 사이드바 접기/펼치기: 헤더 대신 사이드바-본문 경계선에 붙는 세로 탭(VS Code·GitHub 스타일).
+     원형 버튼과 달리 경계선에 걸치지 않고 완전히 본문 쪽(펼침) 또는 화면 왼쪽 끝(접힘)에 살짝
+     붙어 있다가, 화살표 하나(‹)가 상태에 따라 180도 돌아 반대 방향(›)을 가리킨다.
+     left 값은 global.css에서 사이드바 상태(모바일 열림/닫힘, 데스크톱 접힘)에 따라 옮긴다. -->
+<button
+	id="sidebar-toggle"
+	type="button"
+	aria-label="메뉴 열기"
+	aria-expanded="false"
+	aria-controls="app-sidebar"
+	class="sidebar-edge-toggle fixed z-50 flex h-11 w-4 items-center justify-center rounded-r-md border border-l-0 border-border bg-surface text-text-secondary opacity-70 transition-[left,opacity] duration-200 ease-out hover:opacity-100 hover:bg-surface-alt hover:text-text"
+>
+	<svg
+		id="sidebar-toggle-icon"
+		xmlns="http://www.w3.org/2000/svg"
+		class="h-3.5 w-3.5 shrink-0 transition-transform duration-200"
+		fill="none"
+		viewBox="0 0 24 24"
+		stroke="currentColor"
+		stroke-width="2.5"
+	>
+		<path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6" />
+	</svg>
+</button>
+
 <aside
 	id="app-sidebar"
 	class="fixed bottom-0 left-0 z-40 flex max-w-[85vw] flex-col border-r border-border bg-surface transition-transform duration-200 ease-out"
@@ -222,6 +247,10 @@ const communityItems = [
 			const visible = isVisible();
 			toggle!.setAttribute("aria-expanded", String(visible));
 			toggle!.setAttribute("aria-label", visible ? "메뉴 접기" : "메뉴 열기");
+			// 화살표 하나(‹)를 펼침일 땐 그대로, 접힘일 땐 180도 돌려 반대 방향(›)을 가리키게 한다
+			document
+				.getElementById("sidebar-toggle-icon")
+				?.classList.toggle("rotate-180", !visible);
 			// 접혀 있으면 화면 밖이라 보조기기·탭 이동에서 제외
 			sidebar!.setAttribute("aria-hidden", visible ? "false" : "true");
 			sidebar!.inert = !visible;
