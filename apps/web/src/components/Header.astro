@@ -1,5 +1,5 @@
 ---
-const logoLetters = "DANSUM".split("");
+const logoLetters = "dansum".split("");
 ---
 
 <!-- 전폭 고정 헤더: 사이드바보다 위(z-50)에 있고, 사이드바는 이 아래에서 시작한다 -->
@@ -13,7 +13,7 @@ const logoLetters = "DANSUM".split("");
 				<!-- 좁은 화면에선 워드마크를 숨기고 검색창에 폭을 양보한다(레딧처럼) -->
 				<a href="/" class="header-brand hidden sm:block shrink-0">
 					<h1
-						class="text-2xl font-extrabold tracking-tight text-text leading-none"
+						class="font-logo text-2xl font-semibold tracking-tighter text-text leading-none"
 						aria-label="DANSUM"
 					>
 						{logoLetters.map((ch, idx) => (
@@ -141,7 +141,7 @@ const logoLetters = "DANSUM".split("");
 								<circle cx="12" cy="7" r="4" />
 							</svg>
 							<span class="flex-1">로그인</span>
-							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">준비 중</span>
+							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold">준비 중</span>
 						</span>
 						<span
 							role="menuitem"
@@ -155,7 +155,7 @@ const logoLetters = "DANSUM".split("");
 								<circle cx="17" cy="18" r="2" />
 							</svg>
 							<span class="flex-1">설정</span>
-							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">준비 중</span>
+							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold">준비 중</span>
 						</span>
 					</div>
 				</div>

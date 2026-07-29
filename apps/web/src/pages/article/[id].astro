@@ -88,14 +88,14 @@ if (!article && !error) return Astro.redirect("/");
 						href={article.sourceUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="font-medium text-brand hover:underline"
+						class="font-semibold text-brand hover:underline"
 					>
 						원문 &nearr;
 					</a>
 				</div>
 
 				<!-- 제목 -->
-				<h1 class="text-3xl font-extrabold leading-tight tracking-tight mb-5">
+				<h1 class="text-3xl font-bold leading-tight tracking-tight mb-5">
 					{article.title}
 				</h1>
 
@@ -209,7 +209,7 @@ if (!article && !error) return Astro.redirect("/");
 						<a
 							id="back-to-list"
 							href={`/category/${article.category}`}
-							class="text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
+							class="text-[15px] font-semibold text-text-secondary hover:text-text transition-colors"
 						>
 							&larr; 목록으로
 						</a>
@@ -219,7 +219,7 @@ if (!article && !error) return Astro.redirect("/");
 							data-article-id={article.id}
 							aria-label="북마크"
 							aria-pressed="false"
-							class="bookmark-btn inline-flex items-center gap-1.5 text-[15px] font-medium text-text-secondary hover:text-text transition-colors"
+							class="bookmark-btn inline-flex items-center gap-1.5 text-[15px] font-semibold text-text-secondary hover:text-text transition-colors"
 						>
 							<svg data-bookmark-icon class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12v16l-6-4-6 4V4z" />
@@ -231,7 +231,7 @@ if (!article && !error) return Astro.redirect("/");
 						href={article.sourceUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-[15px] font-medium text-brand hover:underline"
+						class="text-[15px] font-semibold text-brand hover:underline"
 					>
 						원문 보기 &rarr;
 					</a>
@@ -261,7 +261,7 @@ if (!article && !error) return Astro.redirect("/");
 							</a>
 							<a
 								href={`/category/${article.category}`}
-								class="text-[13px] font-medium text-accent hover:text-brand hover:underline"
+								class="text-[13px] font-semibold text-accent hover:text-brand hover:underline"
 							>
 								{CATEGORY_LABELS[article.category as Category] ?? article.category}
 							</a>
@@ -281,7 +281,7 @@ if (!article && !error) return Astro.redirect("/");
 
 					{sourceTotal !== null && (
 						<div class="mt-4 border-t border-border pt-4">
-							<p class="text-xl font-extrabold text-text tabular-nums">{sourceTotal}건</p>
+							<p class="text-xl font-bold text-text tabular-nums">{sourceTotal}건</p>
 							<p class="text-[13px] text-text-secondary">이 매체가 낸 기사</p>
 						</div>
 					)}

@@ -107,9 +107,9 @@ const communityItems = [
 						currentPath === "/hot" ? "font-semibold text-text bg-surface-alt" : "text-text",
 					]}
 				>
-					<!-- Hot만 다른 아이콘과 달리 항상 주황색(꺼지지 않는 불꽃 느낌)으로 고정한다.
+					<!-- Hot 아이콘은 --color-hot 토큰(급상승/NEW 배지와 동일한 의미)을 그대로 쓴다.
 					     hot.astro 제목 옆 아이콘과 모양을 맞춰야 하니 수정 시 함께 동기화할 것. -->
-					<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="#f4511e" aria-hidden="true">
+					<svg class="w-[18px] h-[18px] shrink-0 fill-hot" viewBox="0 0 24 24" aria-hidden="true">
 						<path
 							fill-rule="evenodd"
 							clip-rule="evenodd"
@@ -186,7 +186,7 @@ const communityItems = [
 								)}
 							</svg>
 							<span class="flex-1">{item.label}</span>
-							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
+							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold">
 								준비 중
 							</span>
 						</span>
