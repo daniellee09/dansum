@@ -1,0 +1,226 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ArticleCard from "../components/ArticleCard.astro";
+import { CATEGORY_LABELS, formatKoreanDate } from "@dansum/shared";
+import type { Category } from "@dansum/shared";
+import { listBookmarkIds, listFollows, getSourceNames } from "../lib/server/db";
+import { getInitialAvatar } from "../lib/userAvatar";
+import { getArticle } from "../lib/api";
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect("/login?redirect=/mypage");
+
+const db = Astro.locals.runtime.env.DB;
+const BOOKMARK_PREVIEW = 5;
+
+const [bookmarkIds, follows] = await Promise.all([listBookmarkIds(db, user.id), listFollows(db, user.id)]);
+
+const sourceNames = await getSourceNames(db, follows.sources);
+
+const bookmarkArticles = (
+	await Promise.allSettled(bookmarkIds.slice(0, BOOKMARK_PREVIEW).map((id) => getArticle(id)))
+)
+	.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getArticle>>> => r.status === "fulfilled")
+	.map((r) => r.value);
+
+const { initial, color } = getInitialAvatar(user.id, user.nickname);
+---
+
+<BaseLayout title="마이페이지 - 단숨" description="내 프로필과 팔로우·북마크를 관리하세요">
+	<section class="flex flex-col gap-8">
+		<!-- 프로필 카드 -->
+		<div class="flex items-center gap-4">
+			<span
+				class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
+				style={`background-color:${color}`}
+				aria-hidden="true"
+			>
+				{initial}
+			</span>
+			<div class="min-w-0 flex-1">
+				<div class="flex items-center gap-2">
+					<h2 id="profile-nickname" class="text-lg font-bold text-text truncate">{user.nickname}</h2>
+					<button
+						type="button"
+						id="edit-nickname-toggle"
+						class="text-xs text-text-secondary hover:text-brand transition-colors"
+					>
+						수정
+					</button>
+				</div>
+				<p class="text-sm text-text-secondary truncate">{user.email}</p>
+				<p class="text-xs text-text-secondary mt-0.5">{formatKoreanDate(user.createdAt)} 가입</p>
+			</div>
+		</div>
+
+		<!-- 닉네임 수정 폼(기본 숨김) -->
+		<form id="edit-nickname-form" class="hidden -mt-4 flex items-center gap-2">
+			<input
+				id="edit-nickname-input"
+				type="text"
+				value={user.nickname}
+				minlength="2"
+				maxlength="20"
+				class="w-48 rounded-md border border-border bg-surface-alt px-3 py-1.5 text-sm outline-none focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
+			/>
+			<button
+				type="submit"
+				class="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:brightness-110"
+			>
+				저장
+			</button>
+			<button
+				type="button"
+				id="edit-nickname-cancel"
+				class="text-sm text-text-secondary hover:text-text transition-colors"
+			>
+				취소
+			</button>
+			<span id="edit-nickname-error" class="hidden text-sm text-hot"></span>
+		</form>
+
+		<!-- 팔로우 관리 -->
+		<div>
+			<h3 class="text-sm font-bold text-text-secondary mb-3">팔로우 중</h3>
+			{follows.sources.length === 0 && follows.categories.length === 0 ? (
+				<p class="text-sm text-text-secondary">
+					아직 팔로우한 매체나 카테고리가 없습니다. <a href="/feed" class="text-brand hover:underline">내 피드</a>에서 팔로우해보세요.
+				</p>
+			) : (
+				<div class="flex flex-wrap gap-2">
+					{follows.sources.map((sourceId) => (
+						<span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface pl-3 pr-1.5 py-1 text-sm">
+							<a href={`/source/${sourceId}`} class="text-text hover:text-brand transition-colors">
+								{sourceNames[sourceId] ?? sourceId}
+							</a>
+							<button
+								type="button"
+								data-unfollow
+								data-follow-type="source"
+								data-follow-value={sourceId}
+								aria-label={`${sourceNames[sourceId] ?? sourceId} 팔로우 해제`}
+								class="w-5 h-5 flex items-center justify-center rounded-full text-text-secondary hover:text-text hover:bg-surface-alt leading-none"
+							>
+								×
+							</button>
+						</span>
+					))}
+					{follows.categories.map((category) => (
+						<span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface pl-3 pr-1.5 py-1 text-sm">
+							<a href={`/category/${category}`} class="text-text hover:text-brand transition-colors">
+								{CATEGORY_LABELS[category as Category] ?? category}
+							</a>
+							<button
+								type="button"
+								data-unfollow
+								data-follow-type="category"
+								data-follow-value={category}
+								aria-label={`${CATEGORY_LABELS[category as Category] ?? category} 팔로우 해제`}
+								class="w-5 h-5 flex items-center justify-center rounded-full text-text-secondary hover:text-text hover:bg-surface-alt leading-none"
+							>
+								×
+							</button>
+						</span>
+					))}
+				</div>
+			)}
+		</div>
+
+		<!-- 북마크 미리보기 -->
+		<div>
+			<div class="flex items-center justify-between mb-1">
+				<h3 class="text-sm font-bold text-text-secondary">최근 북마크</h3>
+				{bookmarkIds.length > 0 && (
+					<a href="/bookmarks" class="text-xs text-text-secondary hover:text-brand transition-colors">
+						전체보기 ({bookmarkIds.length})
+					</a>
+				)}
+			</div>
+			{bookmarkArticles.length === 0 ? (
+				<p class="text-sm text-text-secondary">아직 북마크한 기사가 없습니다.</p>
+			) : (
+				<div class="-mx-4 px-4 divide-y divide-border border-t border-border">
+					{bookmarkArticles.map((article) => <ArticleCard article={article} />)}
+				</div>
+			)}
+		</div>
+	</section>
+</BaseLayout>
+
+<script>
+	import { setupBookmarkButtons } from "../lib/bookmarks";
+
+	function setupNicknameEdit() {
+		const toggle = document.getElementById("edit-nickname-toggle");
+		const cancel = document.getElementById("edit-nickname-cancel");
+		const form = document.getElementById("edit-nickname-form") as HTMLFormElement | null;
+		const input = document.getElementById("edit-nickname-input") as HTMLInputElement | null;
+		const errorEl = document.getElementById("edit-nickname-error");
+		const nicknameHeading = document.getElementById("profile-nickname");
+		if (!toggle || !form || !input || toggle.dataset.bound) return;
+		toggle.dataset.bound = "true";
+
+		toggle.addEventListener("click", () => {
+			form.classList.remove("hidden");
+			toggle.classList.add("hidden");
+			input.focus();
+			input.select();
+		});
+		cancel?.addEventListener("click", () => {
+			form.classList.add("hidden");
+			toggle.classList.remove("hidden");
+			errorEl?.classList.add("hidden");
+			input.value = nicknameHeading?.textContent?.trim() ?? "";
+		});
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			errorEl?.classList.add("hidden");
+			const nickname = input.value.trim();
+			try {
+				const res = await fetch("/api/me/profile", {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ nickname }),
+				});
+				const data = (await res.json()) as { success: boolean; error?: string };
+				if (!res.ok || !data.success) {
+					if (errorEl) {
+						errorEl.textContent = data.error ?? "닉네임 변경에 실패했습니다";
+						errorEl.classList.remove("hidden");
+					}
+					return;
+				}
+				if (nicknameHeading) nicknameHeading.textContent = nickname;
+				form.classList.add("hidden");
+				toggle.classList.remove("hidden");
+			} catch {
+				if (errorEl) {
+					errorEl.textContent = "네트워크 오류가 발생했습니다";
+					errorEl.classList.remove("hidden");
+				}
+			}
+		});
+	}
+
+	function setupUnfollowButtons() {
+		document.querySelectorAll<HTMLButtonElement>("[data-unfollow]:not([data-bound])").forEach((btn) => {
+			btn.dataset.bound = "true";
+			btn.addEventListener("click", async () => {
+				const type = btn.dataset.followType;
+				const value = btn.dataset.followValue;
+				if (!type || !value) return;
+				await fetch(`/api/me/follows/${type}/${encodeURIComponent(value)}`, { method: "DELETE" }).catch(
+					() => {},
+				);
+				btn.closest("span")?.remove();
+			});
+		});
+	}
+
+	document.addEventListener("astro:page-load", () => {
+		setupNicknameEdit();
+		setupUnfollowButtons();
+		setupBookmarkButtons();
+	});
+</script>

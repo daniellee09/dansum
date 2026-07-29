@@ -12,16 +12,18 @@ interface UserRow {
 	nickname: string;
 	avatar_url: string | null;
 	status: string;
+	nickname_changed_at: string | null;
 	created_at: string;
 }
 
-function toAuthUser(row: UserRow): AuthUser {
+export function toAuthUser(row: UserRow): AuthUser {
 	return {
 		id: row.id,
 		email: row.email,
 		nickname: row.nickname,
 		avatarUrl: row.avatar_url,
-		createdAt: row.created_at,
+		// SQLite datetime('now')는 "YYYY-MM-DD HH:MM:SS"(UTC, 표기 없음) — 표준 ISO로 정규화
+		createdAt: `${row.created_at.replace(" ", "T")}Z`,
 	};
 }
 
@@ -37,6 +39,62 @@ export async function findUserByEmail(db: D1Database, email: string): Promise<Us
 export async function nicknameExists(db: D1Database, nickname: string): Promise<boolean> {
 	const row = await db.prepare("SELECT 1 FROM users WHERE nickname = ?").bind(nickname).first();
 	return row !== null;
+}
+
+export async function findUserById(db: D1Database, id: string): Promise<UserRow | null> {
+	return db.prepare("SELECT * FROM users WHERE id = ?").bind(id).first<UserRow>();
+}
+
+const NICKNAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+
+/** SQLite datetime('now')는 "YYYY-MM-DD HH:MM:SS"(UTC, 타임존 표기 없음)를 반환한다 */
+function parseSqliteUtc(value: string): Date {
+	return new Date(`${value.replace(" ", "T")}Z`);
+}
+
+export async function updateNickname(
+	db: D1Database,
+	userId: string,
+	nickname: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	const current = await findUserById(db, userId);
+	if (!current) return { ok: false, error: "사용자를 찾을 수 없습니다" };
+	if (current.nickname === nickname) return { ok: true };
+
+	if (current.nickname_changed_at) {
+		const elapsed = Date.now() - parseSqliteUtc(current.nickname_changed_at).getTime();
+		if (elapsed < NICKNAME_COOLDOWN_MS) {
+			const daysLeft = Math.ceil((NICKNAME_COOLDOWN_MS - elapsed) / (24 * 60 * 60 * 1000));
+			return { ok: false, error: `닉네임은 ${daysLeft}일 후에 다시 변경할 수 있습니다` };
+		}
+	}
+
+	if (await nicknameExists(db, nickname)) {
+		return { ok: false, error: "이미 사용 중인 닉네임입니다" };
+	}
+
+	await db
+		.prepare(
+			"UPDATE users SET nickname = ?, nickname_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+		)
+		.bind(nickname, userId)
+		.run();
+	return { ok: true };
+}
+
+export async function getSourceNames(
+	db: D1Database,
+	ids: string[],
+): Promise<Record<string, string>> {
+	if (ids.length === 0) return {};
+	const placeholders = ids.map(() => "?").join(",");
+	const { results } = await db
+		.prepare(`SELECT id, name FROM sources WHERE id IN (${placeholders})`)
+		.bind(...ids)
+		.all<{ id: string; name: string }>();
+	const map: Record<string, string> = {};
+	for (const r of results) map[r.id] = r.name;
+	return map;
 }
 
 export async function createUser(

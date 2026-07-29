@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { verifyPassword } from "@dansum/shared";
-import { createSession, findUserByEmail } from "../../../lib/server/db";
+import { createSession, findUserByEmail, toAuthUser } from "../../../lib/server/db";
 import { json } from "../../../lib/server/http";
 import { SESSION_COOKIE } from "../../../middleware";
 
@@ -55,14 +55,5 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
 		expires: expiresAt,
 	});
 
-	return json({
-		success: true,
-		data: {
-			id: row.id,
-			email: row.email,
-			nickname: row.nickname,
-			avatarUrl: row.avatar_url,
-			createdAt: row.created_at,
-		},
-	});
+	return json({ success: true, data: toAuthUser(row) });
 };
