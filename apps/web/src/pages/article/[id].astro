@@ -236,6 +236,15 @@ if (!article && !error) return Astro.redirect("/");
 						원문 보기 &rarr;
 					</a>
 				</div>
+
+				<!-- 댓글: 계정 데이터라 클라이언트에서 그린다(lib/comments.ts) -->
+				<div class="mt-8 pt-6 border-t border-border" data-comments data-article-id={article.id}>
+					<h2 class="text-lg font-bold mb-4">
+						댓글 <span data-comment-count>0</span>
+					</h2>
+					<div data-comment-form-wrap class="mb-6"></div>
+					<div data-comment-list></div>
+				</div>
 			</article>
 
 			<!-- 우측 사이드바: 매체 정보 · 이 매체의 다른 기사 · 관련 보도(타 매체).
@@ -361,10 +370,14 @@ if (!article && !error) return Astro.redirect("/");
 	// 홈 화면 "최근 본 기사" 위젯이 읽을 수 있게 방문을 기록한다(lib/recentlyViewed.ts).
 	// 계정이 없어 localStorage 기반이라 서버가 아닌 클라이언트에서 기록한다.
 	import { addRecentlyViewed } from "../../lib/recentlyViewed";
+	import { mountComments } from "../../lib/comments";
 
 	document.addEventListener("astro:page-load", () => {
 		const id = document.querySelector<HTMLElement>("[data-article-id]")?.dataset.articleId;
 		if (id) addRecentlyViewed(id);
+
+		const commentsRoot = document.querySelector<HTMLElement>("[data-comments]");
+		if (commentsRoot?.dataset.articleId) mountComments(commentsRoot, commentsRoot.dataset.articleId);
 	});
 </script>
 

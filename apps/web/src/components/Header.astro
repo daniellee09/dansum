@@ -65,18 +65,47 @@ const logoLetters = "dansum".split("");
 				</div>
 			</form>
 
-			<!-- 유저·알림: 지금은 디자인만(추후 댓글/의견 기능용 빌드업). 아직 동작은 없다 -->
+			<!-- 유저·알림 -->
 			<div class="flex justify-end items-center gap-1 shrink-0">
-				<button
-					type="button"
-					aria-label="알림"
-					class="w-9 h-9 shrink-0 flex items-center justify-center rounded-md text-text-secondary hover:text-text hover:bg-surface-alt transition-colors"
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" class="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-						<path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 01-3.46 0" />
-					</svg>
-				</button>
+				<div class="relative">
+					<button
+						id="notif-bell-toggle"
+						type="button"
+						aria-label="알림"
+						aria-haspopup="menu"
+						aria-expanded="false"
+						aria-controls="notif-menu"
+						class:list={["relative w-9 h-9 shrink-0 flex items-center justify-center rounded-md text-text-secondary hover:text-text hover:bg-surface-alt transition-colors", !user && "hidden"]}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 01-3.46 0" />
+						</svg>
+						<span
+							id="notif-badge"
+							class="hidden absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-hot text-white text-[10px] font-bold leading-4 text-center"
+						>
+							0
+						</span>
+					</button>
+
+					<div
+						id="notif-menu"
+						role="menu"
+						aria-hidden="true"
+						aria-label="알림 메뉴"
+						class="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 origin-top-right rounded-lg bg-surface py-1.5 opacity-0 scale-95 pointer-events-none transition-[opacity,transform] duration-150 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_16px_40px_-8px_rgba(0,0,0,0.35)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_16px_40px_-8px_rgba(0,0,0,0.6)]"
+					>
+						<div class="flex items-center justify-between px-3.5 py-2">
+							<span class="text-sm font-semibold text-text">알림</span>
+							<button id="notif-mark-all" type="button" class="text-xs text-text-secondary hover:text-brand transition-colors">
+								모두 읽음
+							</button>
+						</div>
+						<div class="my-1 border-t border-border"></div>
+						<div id="notif-list" class="max-h-80 overflow-y-auto"></div>
+					</div>
+				</div>
 
 				<div class="relative -mr-1.5">
 					<button
@@ -218,6 +247,8 @@ const logoLetters = "dansum".split("");
 </header>
 
 <script>
+	import { setupNotificationBell } from "../lib/notifications";
+
 	// "/" 로 헤더 검색창 포커스(입력 중일 때는 무시). document 리스너라 1회 등록으로 충분.
 	document.addEventListener("keydown", (e) => {
 		if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -288,8 +319,10 @@ const logoLetters = "dansum".split("");
 
 	document.addEventListener("astro:page-load", setupProfileMenu);
 	document.addEventListener("astro:page-load", setupLogout);
+	document.addEventListener("astro:page-load", setupNotificationBell);
 	// 페이지 전환 시 이전 문서의 열림 상태가 남지 않게 정리
 	document.addEventListener("astro:before-swap", () => {
 		document.getElementById("profile-menu-toggle")?.setAttribute("aria-expanded", "false");
+		document.getElementById("notif-bell-toggle")?.setAttribute("aria-expanded", "false");
 	});
 </script>
