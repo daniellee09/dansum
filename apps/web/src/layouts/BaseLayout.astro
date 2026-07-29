@@ -28,6 +28,11 @@ const {
 const wideWidth = wide === true ? "70.5rem" : wide || null;
 
 const canonical = new URL(Astro.url.pathname, Astro.url).href;
+
+// 클라이언트(lib/auth.ts)가 로그인 여부를 동기적으로 읽을 수 있게 SSR 시점 상태를 내려준다.
+// </script> breakout 방지를 위해 "<"를 이스케이프한다.
+const authUser = Astro.locals.user;
+const authStateJson = JSON.stringify(authUser).replace(/</g, "\\u003c");
 ---
 
 <!doctype html>
@@ -99,8 +104,11 @@ const canonical = new URL(Astro.url.pathname, Astro.url).href;
 		</script>
 	</head>
 	<body class="min-h-screen pt-[var(--header-h)]">
+		<!-- lib/auth.ts가 읽는 로그인 상태(SSR에서 내려줌). JSON이라 실행되지 않는다 -->
+		<script type="application/json" id="dansum-auth-state" set:html={authStateJson}></script>
+
 		<!-- 헤더는 전폭이라 app-shell(사이드바 폭만큼 밀림) 바깥에 둔다 -->
-		<Header />
+		<Header user={authUser} />
 		<Sidebar />
 		<!-- app-shell: 데스크톱에서 고정된 사이드바 폭만큼 밀린다(global.css) -->
 		<div

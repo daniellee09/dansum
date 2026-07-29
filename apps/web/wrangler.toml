@@ -2,3 +2,15 @@ name = "dansum-web"
 pages_build_output_dir = "./dist"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
+
+# 계정/세션/북마크·팔로우·최근본기사는 apps/api와 같은 D1·KV를 그대로 공유해서 쓴다(같은 origin에서
+# 쿠키·DB 접근을 함께 처리 — 별도 서비스 바인딩 없이 apps/web이 유저 데이터를 직접 읽고 쓴다).
+# 스키마 마이그레이션의 단일 소유자는 여전히 apps/api/wrangler.toml이다(migrations_dir 참고).
+[[d1_databases]]
+binding = "DB"
+database_name = "dansum-db"
+database_id = "39f86003-828b-4be8-b020-fa88bd846974"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "8fa545469be9408caf7826af34fdefdb"

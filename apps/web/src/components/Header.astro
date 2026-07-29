@@ -1,4 +1,11 @@
 ---
+import type { AuthUser } from "@dansum/shared";
+
+interface Props {
+	user?: AuthUser | null;
+}
+const { user = null } = Astro.props;
+
 const logoLetters = "dansum".split("");
 ---
 
@@ -85,7 +92,7 @@ const logoLetters = "dansum".split("");
 						</svg>
 					</button>
 
-					<!-- 계정 없이 지금 있는 기능(북마크/내 피드/다크모드)만 실동작, 나머지는 준비 중 -->
+					<!-- 계정 있으면 북마크/내 피드/다크모드/로그아웃, 없으면 로그인/회원가입만 실동작 -->
 					<div
 						id="profile-menu"
 						role="menu"
@@ -93,6 +100,13 @@ const logoLetters = "dansum".split("");
 						aria-label="내 정보 메뉴"
 						class="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 origin-top-right rounded-lg bg-surface py-1.5 opacity-0 scale-95 pointer-events-none transition-[opacity,transform] duration-150 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_16px_40px_-8px_rgba(0,0,0,0.35)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_16px_40px_-8px_rgba(0,0,0,0.6)]"
 					>
+						{user && (
+							<div class="px-3.5 py-2 text-sm">
+								<p class="font-semibold text-text truncate">{user.nickname}</p>
+								<p class="text-[12px] text-text-secondary truncate">{user.email}</p>
+							</div>
+						)}
+						{user && <div class="my-1.5 border-t border-border"></div>}
 						<a
 							href="/bookmarks"
 							role="menuitem"
@@ -131,18 +145,31 @@ const logoLetters = "dansum".split("");
 
 						<div class="my-1.5 border-t border-border"></div>
 
-						<span
-							role="menuitem"
-							aria-disabled="true"
-							class="flex cursor-not-allowed items-center gap-3 px-3.5 py-2 text-sm text-text-secondary opacity-60"
-						>
-							<svg class="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-								<circle cx="12" cy="7" r="4" />
-							</svg>
-							<span class="flex-1">로그인</span>
-							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold">준비 중</span>
-						</span>
+						{user ? (
+							<button
+								type="button"
+								id="profile-menu-logout"
+								role="menuitem"
+								class="flex w-full items-center gap-3 px-3.5 py-2 text-sm text-text hover:bg-surface-alt transition-colors"
+							>
+								<svg class="w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+								</svg>
+								로그아웃
+							</button>
+						) : (
+							<a
+								href="/login"
+								role="menuitem"
+								class="flex items-center gap-3 px-3.5 py-2 text-sm text-text hover:bg-surface-alt transition-colors"
+							>
+								<svg class="w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+									<circle cx="12" cy="7" r="4" />
+								</svg>
+								로그인 / 회원가입
+							</a>
+						)}
 						<span
 							role="menuitem"
 							aria-disabled="true"
@@ -224,7 +251,18 @@ const logoLetters = "dansum".split("");
 		}
 	}
 
+	async function setupLogout() {
+		const btn = document.getElementById("profile-menu-logout");
+		if (!btn || btn.dataset.bound) return;
+		btn.dataset.bound = "true";
+		btn.addEventListener("click", async () => {
+			await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+			window.location.href = "/";
+		});
+	}
+
 	document.addEventListener("astro:page-load", setupProfileMenu);
+	document.addEventListener("astro:page-load", setupLogout);
 	// 페이지 전환 시 이전 문서의 열림 상태가 남지 않게 정리
 	document.addEventListener("astro:before-swap", () => {
 		document.getElementById("profile-menu-toggle")?.setAttribute("aria-expanded", "false");

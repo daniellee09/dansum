@@ -35,8 +35,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 		emptyFollow?.classList.add("hidden");
 		emptyResults?.classList.add("hidden");
 
-		const sources = getFollowedSources();
-		const categories = getFollowedCategories();
+		const [sources, categories] = await Promise.all([getFollowedSources(), getFollowedCategories()]);
 
 		if (sources.length === 0 && categories.length === 0) {
 			emptyFollow?.classList.remove("hidden");

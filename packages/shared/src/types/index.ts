@@ -16,3 +16,5 @@ export type {
 	ArticleListResponse,
 	ArticleDetailResponse,
 } from "./api.js";
+
+export type { AuthUser } from "./user.js";
