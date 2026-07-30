@@ -156,10 +156,31 @@ Pages가 먼저 올라가 새 컬럼을 읽는 쿼리가 전부 `D1_ERROR: no su
 계정을 마이그레이션에 하드코딩하면 스키마 역사에 남아 되돌릴 수 없으므로 **수동으로 1회** 준다:
 
 ```bash
-cd apps/api && wrangler d1 execute dansum-db --remote --command \
+cd apps/api && pnpm exec wrangler d1 execute dansum-db --remote --command \
   "UPDATE users SET role='admin' WHERE email='여기에_이메일'"
 ```
 
 세션은 KV에 300초 캐시되므로 권한 부여 직후 최대 5분간 반영이 늦을 수 있다. 급하면 재로그인.
 (`AuthUser`의 모양을 바꿀 때는 `apps/web/src/lib/server/db.ts`의 `SESSION_CACHE_PREFIX`를
 올려야 옛 캐시가 안 나온다.)
+
+### ⚠️ 원격 D1이 7403으로 막힐 때
+
+```
+The given account is not valid or is not authorized to access this service [code: 7403]
+```
+
+**셸에 `CLOUDFLARE_API_TOKEN`이 export돼 있는지부터 본다.** 이 변수가 있으면 wrangler는
+`wrangler login`으로 받은 OAuth 토큰을 **무시하고** 그 토큰을 쓴다. CI용으로 만든 토큰에
+D1 권한이 없으면 계정·DB가 멀쩡해도 위 에러가 난다(2026-07-30에 실제로 겪음).
+
+```bash
+echo "TOKEN=${CLOUDFLARE_API_TOKEN:+설정됨}  ACCOUNT=$CLOUDFLARE_ACCOUNT_ID"
+unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID   # 그 세션에서만 해제
+```
+
+`wrangler whoami`로 OAuth 로그인 상태와 `d1 (write)` 권한을 확인할 수 있다. 다만 whoami는
+환경변수 토큰이 있으면 그쪽을 보여주므로, 해제 전후를 비교해야 판별된다.
+
+명령은 `apps/api`에서 `pnpm exec wrangler`로 돌리는 게 안전하다 — bare `wrangler`는 전역
+설치본이나 npx 캐시(다른 버전)를 집을 수 있다.
