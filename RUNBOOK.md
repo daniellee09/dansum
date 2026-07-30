@@ -117,6 +117,19 @@ main에 push되면 자동으로 배포된다. **수동 `wrangler deploy`는 하�
 코드가 스키마보다 앞서면 collector의 INSERT가 D1_ERROR로 터지고, `runPipeline` 전체가
 중단되어 수집·요약이 통째로 멈춘다(2026-07-27, `image_url` 컬럼 누락으로 2시간 중단).
 
+#### ⚠️ 웹은 이 순서 보장을 받지 못한다
+
+`deploy.yml`의 순서 보장은 **워커에만** 적용된다. `dansum-web`은 Cloudflare Pages가
+GitHub 연동으로 **독립적·병렬로** 빌드하므로, 마이그레이션과 웹 코드를 한 커밋에 담으면
+Pages가 먼저 올라가 새 컬럼을 읽는 쿼리가 전부 `D1_ERROR: no such column`으로 죽는다.
+워커와 달리 이건 사용자에게 바로 보이는 장애다.
+
+**웹 코드가 새 컬럼에 의존할 때는 두 번에 나눠 push한다:**
+1. 마이그레이션 파일만 커밋 → push
+2. Actions의 `migrate` 잡 green 확인
+3. `cd apps/api && wrangler d1 migrations list dansum-db --remote`가 비었는지 확인
+4. 그 다음에야 웹 코드 push
+
 ### 필요한 GitHub Secrets
 `Settings → Secrets and variables → Actions`:
 
@@ -136,3 +149,38 @@ main에 push되면 자동으로 배포된다. **수동 `wrangler deploy`는 하�
 ### 시크릿(런타임)
 `OPENAI_API_KEY`는 워커 시크릿이라 배포로 갱신되지 않는다:
 `cd workers/collector && wrangler secret put OPENAI_API_KEY`
+
+### 관리자 권한 부여
+
+신고 처리 화면(`/admin/reports`)은 `users.role = 'admin'`인 계정만 볼 수 있다(그 외에는 404).
+계정을 마이그레이션에 하드코딩하면 스키마 역사에 남아 되돌릴 수 없으므로 **수동으로 1회** 준다:
+
+```bash
+cd apps/api && pnpm exec wrangler d1 execute dansum-db --remote --command \
+  "UPDATE users SET role='admin' WHERE email='여기에_이메일'"
+```
+
+세션은 KV에 300초 캐시되므로 권한 부여 직후 최대 5분간 반영이 늦을 수 있다. 급하면 재로그인.
+(`AuthUser`의 모양을 바꿀 때는 `apps/web/src/lib/server/db.ts`의 `SESSION_CACHE_PREFIX`를
+올려야 옛 캐시가 안 나온다.)
+
+### ⚠️ 원격 D1이 7403으로 막힐 때
+
+```
+The given account is not valid or is not authorized to access this service [code: 7403]
+```
+
+**셸에 `CLOUDFLARE_API_TOKEN`이 export돼 있는지부터 본다.** 이 변수가 있으면 wrangler는
+`wrangler login`으로 받은 OAuth 토큰을 **무시하고** 그 토큰을 쓴다. CI용으로 만든 토큰에
+D1 권한이 없으면 계정·DB가 멀쩡해도 위 에러가 난다(2026-07-30에 실제로 겪음).
+
+```bash
+echo "TOKEN=${CLOUDFLARE_API_TOKEN:+설정됨}  ACCOUNT=$CLOUDFLARE_ACCOUNT_ID"
+unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID   # 그 세션에서만 해제
+```
+
+`wrangler whoami`로 OAuth 로그인 상태와 `d1 (write)` 권한을 확인할 수 있다. 다만 whoami는
+환경변수 토큰이 있으면 그쪽을 보여주므로, 해제 전후를 비교해야 판별된다.
+
+명령은 `apps/api`에서 `pnpm exec wrangler`로 돌리는 게 안전하다 — bare `wrangler`는 전역
+설치본이나 npx 캐시(다른 버전)를 집을 수 있다.

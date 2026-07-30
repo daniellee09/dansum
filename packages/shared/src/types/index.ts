@@ -18,3 +18,10 @@ export type {
 } from "./api.js";
 
 export type { AuthUser } from "./user.js";
+
+export type {
+	CommentAuthor,
+	CommentDTO,
+	CommentSort,
+	ReportReason,
+} from "./comment.js";

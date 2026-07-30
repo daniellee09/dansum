@@ -1,0 +1,126 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { REPORT_REASONS, formatRelativeTime } from "@dansum/shared";
+import { isAdmin } from "../../lib/server/admin";
+import { listReportedComments } from "../../lib/server/reports";
+
+// 비관리자에겐 리다이렉트가 아니라 404를 준다 — 리다이렉트는 "여기 뭔가 있다"를 알려준다.
+if (!isAdmin(Astro.locals.user)) {
+	return new Response(null, { status: 404 });
+}
+
+const reports = await listReportedComments(Astro.locals.runtime.env.DB);
+const reasonLabel = new Map(REPORT_REASONS.map((r) => [r.key, r.label]));
+---
+
+<BaseLayout title="신고 처리 - 단숨" description="신고된 댓글 목록">
+	<section>
+		<h2 class="text-lg font-bold mb-1">신고 처리</h2>
+		<p class="text-[13px] text-text-secondary mb-4">
+			서로 다른 신고자 3명이 모이면 자동으로 가려집니다. 오탐이면 <strong class="font-semibold">가림 해제</strong>로 되돌리세요.
+		</p>
+
+		{reports.length === 0 ? (
+			<p class="py-20 text-center text-text-secondary">처리할 신고가 없습니다.</p>
+		) : (
+			<div class="divide-y divide-border border-t border-border">
+				{reports.map((r) => (
+					<article class="py-4" data-report-row data-comment-id={r.id}>
+						<div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+							<span class="font-semibold text-text">{r.author.nickname}</span>
+							<span>{formatRelativeTime(r.createdAt)}</span>
+							<span class="tabular-nums">신고 {r.reportCount}건</span>
+							{r.isHidden && (
+								<span class="rounded-full bg-hot/10 px-2 py-0.5 font-semibold text-hot">가림</span>
+							)}
+							{r.status === "deleted" && (
+								<span class="rounded-full bg-surface-alt px-2 py-0.5">삭제됨</span>
+							)}
+						</div>
+
+						{r.article.id && (
+							<a
+								href={`/article/${r.article.id}`}
+								class="mt-1 block truncate text-[13px] text-brand hover:underline"
+							>
+								{r.article.title ?? r.article.id}
+							</a>
+						)}
+
+						<p class="mt-2 whitespace-pre-wrap break-words text-[15px]">
+							{r.status === "deleted" ? "(삭제된 본문)" : r.body}
+						</p>
+
+						<div class="mt-2 flex flex-wrap gap-1.5">
+							{r.reasons.map((reason) => (
+								<span class="rounded-full border border-border px-2 py-0.5 text-[11px] text-text-secondary">
+									{reasonLabel.get(reason.reason) ?? reason.reason} {reason.count}
+								</span>
+							))}
+						</div>
+
+						<div class="mt-3 flex items-center gap-2">
+							<button
+								type="button"
+								data-action="dismiss"
+								class="rounded-full border border-border px-3 py-1.5 text-xs hover:bg-surface-alt transition-colors"
+							>
+								가림 해제
+							</button>
+							<button
+								type="button"
+								data-action="delete"
+								class="rounded-full border border-hot px-3 py-1.5 text-xs text-hot hover:bg-hot/10 transition-colors"
+							>
+								삭제
+							</button>
+							<span data-result class="text-xs text-text-secondary"></span>
+						</div>
+					</article>
+				))}
+			</div>
+		)}
+	</section>
+</BaseLayout>
+
+<script>
+	function setupAdminReports() {
+		for (const row of document.querySelectorAll<HTMLElement>("[data-report-row]")) {
+			const commentId = row.dataset.commentId;
+			const result = row.querySelector<HTMLElement>("[data-result]");
+			if (!commentId || !result) continue;
+
+			for (const btn of row.querySelectorAll<HTMLButtonElement>("button[data-action]")) {
+				btn.addEventListener("click", async () => {
+					const action = btn.dataset.action;
+					if (action === "delete" && !confirm("이 댓글을 삭제할까요?")) return;
+
+					const buttons = row.querySelectorAll<HTMLButtonElement>("button[data-action]");
+					for (const b of buttons) b.disabled = true;
+					result.textContent = "처리 중…";
+
+					try {
+						const res = await fetch(`/api/admin/reports/${commentId}`, {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ action }),
+						});
+						const data = (await res.json()) as { success?: boolean; error?: string };
+						if (!res.ok || !data.success) {
+							result.textContent = data.error ?? "처리에 실패했습니다";
+							for (const b of buttons) b.disabled = false;
+							return;
+						}
+						// 처리된 행은 목록에서 빼서 남은 일감만 보이게 한다
+						row.remove();
+					} catch {
+						result.textContent = "네트워크 오류가 발생했습니다";
+						for (const b of buttons) b.disabled = false;
+					}
+				});
+			}
+		}
+	}
+
+	document.addEventListener("astro:page-load", setupAdminReports);
+</script>

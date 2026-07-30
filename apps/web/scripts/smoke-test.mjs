@@ -103,6 +103,39 @@ try {
 		{ timeout: 5000 },
 	);
 	check("/feed shows articles from the followed source", (await page.locator("#feed-list article").count()) > 0);
+
+	// 댓글(공론화 장): 비로그인으로 확인 가능한 것만 본다. 작성/추천/신고는 계정이 필요해
+	// 여기선 다루지 않는다(시드에 계정이 없는 환경에서도 스위트가 돌아야 하므로).
+	const articleHref = await page
+		.locator('#feed-list article a[href^="/article/"], #article-list article a[href^="/article/"]')
+		.first()
+		.getAttribute("href")
+		.catch(() => null);
+	if (articleHref) {
+		await page.goto(`${BASE}${articleHref}`, { waitUntil: "networkidle" });
+		await page.waitForSelector("[data-comment-form-wrap] p, [data-comment-form-wrap] form", {
+			timeout: 5000,
+		});
+		const composerText = await page.locator("[data-comment-form-wrap]").innerText();
+		// 자제 문구는 비로그인에게도 보여야 한다 — 참여를 결정하기 전에 규범을 알리는 게 목적이다
+		check("comment guideline notice is shown to logged-out visitors", composerText.includes("서로 다른 의견이 오가는 자리입니다"));
+		check("guideline explains the removed downvote", composerText.includes("비추천 버튼은 없앴습니다"));
+
+		const sortTabs = await page
+			.locator("[data-comment-list]")
+			.locator("xpath=preceding-sibling::div[1]")
+			.locator("button")
+			.allInnerTexts();
+		check(
+			"comment sort tabs are 화제순/최신순/추천순 (화제순 default)",
+			JSON.stringify(sortTabs) === JSON.stringify(["화제순", "최신순", "추천순"]),
+			sortTabs.join(","),
+		);
+		// 비추천을 되살리면 여기서 걸린다
+		check("no downvote control in comment list", !(await page.locator("[data-comment-list]").innerText()).includes("▼"));
+	} else {
+		check("comment checks (skipped: no seed articles)", true);
+	}
 } finally {
 	await browser.close();
 }

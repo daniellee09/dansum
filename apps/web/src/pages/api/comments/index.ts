@@ -1,7 +1,8 @@
+import { COMMENT_MAX_LENGTH, parseCommentSort } from "@dansum/shared";
 import type { APIRoute } from "astro";
 import { createComment, createReplyNotification, listComments } from "../../../lib/server/comments";
-import { checkAndAwardBadges } from "../../../lib/server/karma";
 import { json, unauthorized } from "../../../lib/server/http";
+import { checkAndAwardBadges } from "../../../lib/server/karma";
 
 const MAX_COMMENTS_PER_WINDOW = 10;
 const RATE_WINDOW_SECONDS = 60 * 5;
@@ -11,8 +12,13 @@ export const GET: APIRoute = async ({ url, locals }) => {
 	if (!articleId) {
 		return json({ success: false, error: "articleId가 필요합니다" }, { status: 400 });
 	}
-	const sort = url.searchParams.get("sort") === "top" ? "top" : "latest";
-	const comments = await listComments(locals.runtime.env.DB, articleId, locals.user?.id ?? null, sort);
+	const sort = parseCommentSort(url.searchParams.get("sort"));
+	const comments = await listComments(
+		locals.runtime.env.DB,
+		articleId,
+		locals.user?.id ?? null,
+		sort,
+	);
 	return json({ success: true, comments });
 };
 
@@ -30,8 +36,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	const parentCommentId = body.parentCommentId ?? null;
 	const text = body.body?.trim() ?? "";
 	if (!articleId) return json({ success: false, error: "articleId가 필요합니다" }, { status: 400 });
-	if (text.length === 0 || text.length > 1000) {
-		return json({ success: false, error: "댓글은 1~1000자여야 합니다" }, { status: 400 });
+	if (text.length === 0 || text.length > COMMENT_MAX_LENGTH) {
+		return json(
+			{ success: false, error: `댓글은 1~${COMMENT_MAX_LENGTH}자여야 합니다` },
+			{ status: 400 },
+		);
 	}
 
 	const { DB, CACHE } = locals.runtime.env;

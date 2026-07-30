@@ -5,6 +5,12 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30일
 const SESSION_CACHE_TTL_SECONDS = 300; // KV 캐시(D1 원장은 항상 최신, 이건 조회 부하만 줄임)
 const RECENTLY_VIEWED_MAX = 20;
 
+/** AuthUser의 모양이 바뀌면 이 접두사를 올린다. 안 올리면 배포 직후 TTL(300초) 동안
+ *  옛 모양이 캐시에서 그대로 나온다 — role을 추가했을 때 관리자가 자기 화면에서 잠기는 식이다.
+ *  조회와 삭제(revokeSession) 두 곳이 반드시 같은 키를 써야 해서 상수로 묶었다.
+ *  한쪽만 바꾸면 로그아웃이 엉뚱한 키를 지워 세션이 최대 300초 더 살아있게 된다. */
+const SESSION_CACHE_PREFIX = "session:v2:";
+
 interface UserRow {
 	id: string;
 	email: string;
@@ -12,6 +18,7 @@ interface UserRow {
 	nickname: string;
 	avatar_url: string | null;
 	status: string;
+	role: string;
 	karma: number;
 	nickname_changed_at: string | null;
 	created_at: string;
@@ -23,6 +30,8 @@ export function toAuthUser(row: UserRow): AuthUser {
 		email: row.email,
 		nickname: row.nickname,
 		avatarUrl: row.avatar_url,
+		// role은 자유 문자열 컬럼이라 방어적으로 정규화한다(예상 밖 값이면 일반 유저로 처리).
+		role: row.role === "admin" ? "admin" : "user",
 		// SQLite datetime('now')는 "YYYY-MM-DD HH:MM:SS"(UTC, 표기 없음) — 표준 ISO로 정규화
 		createdAt: `${row.created_at.replace(" ", "T")}Z`,
 	};
@@ -140,7 +149,7 @@ export async function validateSessionToken(
 	token: string,
 ): Promise<AuthUser | null> {
 	const tokenHash = await hashToken(token);
-	const cacheKey = `session:${tokenHash}`;
+	const cacheKey = `${SESSION_CACHE_PREFIX}${tokenHash}`;
 
 	const cached = await kv.get(cacheKey);
 	if (cached === "invalid") return null;
@@ -177,7 +186,7 @@ export async function revokeSession(db: D1Database, kv: KVNamespace, token: stri
 		.prepare("UPDATE sessions SET revoked_at = datetime('now') WHERE token_hash = ?")
 		.bind(tokenHash)
 		.run();
-	await kv.delete(`session:${tokenHash}`);
+	await kv.delete(`${SESSION_CACHE_PREFIX}${tokenHash}`);
 }
 
 // ── 북마크 ────────────────────────────────────────────────────
