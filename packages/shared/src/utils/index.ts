@@ -1,10 +1,5 @@
 export { hashUrl } from "./hash.js";
-export {
-	hashPassword,
-	verifyPassword,
-	generateSessionToken,
-	hashToken,
-} from "./auth.js";
+export { generateSessionToken, hashToken } from "./auth.js";
 export { getGrade } from "./grade.js";
 export type { Grade } from "./grade.js";
 export { normalizeSections } from "./sections.js";

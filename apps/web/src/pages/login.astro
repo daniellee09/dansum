@@ -1,99 +1,50 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { safeRedirect } from "../lib/server/oauth";
+
+// 인증은 구글 OAuth 하나뿐이라 로그인/회원가입을 구분하지 않는다 —
+// 처음 오면 계정이 만들어지고, 이미 있으면 그 계정으로 들어간다.
+// /register는 이 페이지로 리다이렉트한다(기존 링크가 깨지지 않게).
+const redirectTo = safeRedirect(Astro.url.searchParams.get("redirect"));
+const error = Astro.url.searchParams.get("error");
+const startUrl = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
+
+// 이미 로그인한 사람이 주소창으로 들어오면 되돌려보낸다
+if (Astro.locals.user) {
+	return Astro.redirect(redirectTo);
+}
 ---
 
-<BaseLayout title="로그인 - 단숨" description="단숨에 로그인하고 북마크·팔로우를 계정에 저장하세요">
-	<section class="max-w-sm mx-auto py-10">
-		<h2 class="text-xl font-bold mb-6 text-center">로그인</h2>
+<BaseLayout title="로그인 - 단숨" description="구글 계정으로 로그인하고 북마크·팔로우를 계정에 저장하세요">
+	<section class="max-w-sm mx-auto py-12">
+		<h2 class="text-xl font-bold text-center">로그인</h2>
+		<p class="mt-2 text-center text-sm text-text-secondary">
+			구글 계정으로 시작하세요. 처음이시면 자동으로 가입됩니다.
+		</p>
 
-		<form id="login-form" class="flex flex-col gap-4" novalidate>
-			<div class="flex flex-col gap-1.5">
-				<label for="email" class="text-sm text-text-secondary">이메일</label>
-				<input
-					id="email"
-					name="email"
-					type="email"
-					autocomplete="email"
-					required
-					class="w-full rounded-md border border-border bg-surface-alt px-3.5 py-2.5 text-[15px] outline-none transition-colors focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
-				/>
-			</div>
-			<div class="flex flex-col gap-1.5">
-				<label for="password" class="text-sm text-text-secondary">비밀번호</label>
-				<input
-					id="password"
-					name="password"
-					type="password"
-					autocomplete="current-password"
-					required
-					class="w-full rounded-md border border-border bg-surface-alt px-3.5 py-2.5 text-[15px] outline-none transition-colors focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
-				/>
-			</div>
+		{error && (
+			<p role="alert" class="mt-5 rounded-md border border-hot/40 bg-hot/5 px-3 py-2.5 text-sm text-hot">
+				{error}
+			</p>
+		)}
 
-			<p id="login-error" class="hidden text-sm text-hot"></p>
+		<a
+			href={startUrl}
+			class="mt-6 flex items-center justify-center gap-2.5 rounded-full border border-border bg-surface px-4 py-2.5 text-[15px] font-semibold text-text transition-colors hover:bg-surface-alt"
+		>
+			<!-- 구글 브랜드 가이드상 로고는 원색 그대로 써야 한다(단색 변형 금지) -->
+			<svg class="h-5 w-5 shrink-0" viewBox="0 0 18 18" aria-hidden="true">
+				<path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 01-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+				<path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.02-3.7H.96v2.34A9 9 0 009 18z" />
+				<path fill="#FBBC05" d="M3.98 10.72a5.41 5.41 0 010-3.44V4.94H.96a9 9 0 000 8.12l3.02-2.34z" />
+				<path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 00.96 4.94l3.02 2.34C4.68 5.16 6.66 3.58 9 3.58z" />
+			</svg>
+			구글로 계속하기
+		</a>
 
-			<button
-				type="submit"
-				id="login-submit"
-				class="mt-2 rounded-full bg-brand py-2.5 text-center text-[15px] font-semibold text-white transition-colors hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-			>
-				로그인
-			</button>
-		</form>
-
-		<p class="mt-5 text-center text-sm text-text-secondary">
-			아직 계정이 없으신가요?
-			<a href="/register" class="text-brand hover:underline">회원가입</a>
+		<p class="mt-6 text-center text-xs leading-relaxed text-text-secondary">
+			로그인하면 북마크·팔로우가 계정에 저장되어<br />
+			다른 기기에서도 이어서 볼 수 있습니다.
 		</p>
 	</section>
 </BaseLayout>
-
-<script>
-	import { migrateLocalDataToAccount } from "../lib/migrateLocal";
-
-	function setupLoginForm() {
-		const form = document.getElementById("login-form") as HTMLFormElement | null;
-		const errorEl = document.getElementById("login-error");
-		const submitBtn = document.getElementById("login-submit") as HTMLButtonElement | null;
-		if (!form || form.dataset.bound) return;
-		form.dataset.bound = "true";
-
-		form.addEventListener("submit", async (e) => {
-			e.preventDefault();
-			errorEl?.classList.add("hidden");
-			if (submitBtn) submitBtn.disabled = true;
-
-			const formData = new FormData(form);
-			try {
-				const res = await fetch("/api/auth/login", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						email: formData.get("email"),
-						password: formData.get("password"),
-					}),
-				});
-				const data = (await res.json()) as { success: boolean; error?: string };
-				if (!res.ok || !data.success) {
-					if (errorEl) {
-						errorEl.textContent = data.error ?? "로그인에 실패했습니다";
-						errorEl.classList.remove("hidden");
-					}
-					return;
-				}
-				await migrateLocalDataToAccount();
-				const redirect = new URLSearchParams(location.search).get("redirect") || "/";
-				window.location.href = redirect;
-			} catch {
-				if (errorEl) {
-					errorEl.textContent = "네트워크 오류가 발생했습니다";
-					errorEl.classList.remove("hidden");
-				}
-			} finally {
-				if (submitBtn) submitBtn.disabled = false;
-			}
-		});
-	}
-
-	document.addEventListener("astro:page-load", setupLoginForm);
-</script>

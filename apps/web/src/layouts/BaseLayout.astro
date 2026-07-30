@@ -214,10 +214,13 @@ const authStateJson = JSON.stringify(authUser).replace(/</g, "\\u003c");
 			// LoadMore가 그려내는 카드는 새로 생기는 DOM이라 자체 스크립트에서 별도로 호출한다.
 			import { setupBookmarkButtons } from "../lib/bookmarks";
 			import { setupFollowButtons } from "../lib/follows";
+			import { runPostLoginMigrationIfFlagged } from "../lib/migrateLocal";
 
 			document.addEventListener("astro:page-load", () => {
 				setupBookmarkButtons();
 				setupFollowButtons();
+				// 소셜 로그인 직후 도착한 페이지라면 익명 localStorage 데이터를 계정으로 옮긴다
+				runPostLoginMigrationIfFlagged();
 			});
 		</script>
 	</body>
