@@ -150,6 +150,37 @@ Pages가 먼저 올라가 새 컬럼을 읽는 쿼리가 전부 `D1_ERROR: no su
 `OPENAI_API_KEY`는 워커 시크릿이라 배포로 갱신되지 않는다:
 `cd workers/collector && wrangler secret put OPENAI_API_KEY`
 
+### 구글 OAuth (로그인)
+
+인증은 구글 OAuth 하나뿐이다. **비밀번호 로그인은 없다** — Workers 무료 플랜은 요청당 CPU가
+10ms인데 OWASP 권장 PBKDF2(210,000회)가 ~17ms라 운영에서 가입이 항상 빈 500으로 죽었다.
+반복 횟수를 한도에 맞추면 해시 강도가 권장치의 5% 아래로 떨어져, 비밀번호를 아예 안 받기로 했다.
+
+[Google Cloud Console](https://console.cloud.google.com/apis/credentials) → OAuth 클라이언트 ID
+(웹 애플리케이션). 승인된 리디렉션 URI **두 개 모두** 등록:
+
+```
+https://dansum-web.pages.dev/api/auth/google/callback
+http://localhost:4321/api/auth/google/callback
+```
+
+범위는 `openid email profile`만 쓴다(민감 범위가 없어 구글 심사 대상이 아니다).
+
+**로컬**: `apps/web/.dev.vars` (gitignore됨)
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+**운영**: Pages 시크릿이라 배포로 갱신되지 않는다. 워커용 `wrangler secret`과 명령이 다르다:
+```bash
+cd apps/web
+pnpm exec wrangler pages secret put GOOGLE_CLIENT_ID --project-name dansum-web
+pnpm exec wrangler pages secret put GOOGLE_CLIENT_SECRET --project-name dansum-web
+```
+
+시크릿을 넣은 뒤에는 **재배포해야 반영된다**(빈 커밋 push 또는 대시보드에서 Retry deployment).
+
 ### 관리자 권한 부여
 
 신고 처리 화면(`/admin/reports`)은 `users.role = 'admin'`인 계정만 볼 수 있다(그 외에는 404).

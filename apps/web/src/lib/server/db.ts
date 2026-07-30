@@ -107,20 +107,106 @@ export async function getSourceNames(
 	return map;
 }
 
+/** 소셜 전용 계정이라 password_hash는 NULL로 둔다(0005에서 이미 nullable로 잡아뒀다). */
 export async function createUser(
 	db: D1Database,
-	params: { email: string; passwordHash: string; nickname: string },
+	params: { email: string; nickname: string; avatarUrl?: string | null },
 ): Promise<AuthUser> {
 	const id = crypto.randomUUID();
 	await db
-		.prepare(
-			"INSERT INTO users (id, email, password_hash, nickname) VALUES (?, ?, ?, ?)",
-		)
-		.bind(id, params.email.toLowerCase(), params.passwordHash, params.nickname)
+		.prepare("INSERT INTO users (id, email, nickname, avatar_url) VALUES (?, ?, ?, ?)")
+		.bind(id, params.email.toLowerCase(), params.nickname, params.avatarUrl ?? null)
 		.run();
 	const row = await db.prepare("SELECT * FROM users WHERE id = ?").bind(id).first<UserRow>();
 	if (!row) throw new Error("Failed to create user");
 	return toAuthUser(row);
+}
+
+// ── 소셜 로그인 ───────────────────────────────────────────────
+
+/** 구글 이름을 닉네임 규칙(2~20자, UNIQUE)에 맞춘다.
+ *  이름이 없거나 너무 짧으면 이메일 아이디를 쓰고, 그것도 안 되면 "회원"으로 떨어뜨린다.
+ *  사용자는 가입 후 마이페이지에서 언제든 바꿀 수 있으므로 여기선 '충돌 없이 만들기'만 신경 쓴다. */
+function toNicknameBase(name: string | null, email: string): string {
+	const fromName = (name ?? "").trim().slice(0, 20);
+	if (fromName.length >= 2) return fromName;
+	const fromEmail = email.split("@")[0]?.replace(/[^\w가-힣]/g, "").slice(0, 20) ?? "";
+	if (fromEmail.length >= 2) return fromEmail;
+	return "회원";
+}
+
+/** 닉네임이 UNIQUE라 충돌하면 뒤에 숫자를 붙여 빈자리를 찾는다.
+ *  20자를 넘지 않도록 접미사 길이만큼 잘라낸다. */
+async function findAvailableNickname(db: D1Database, base: string): Promise<string> {
+	if (!(await nicknameExists(db, base))) return base;
+	for (let i = 2; i < 1000; i++) {
+		const suffix = String(i);
+		const candidate = `${base.slice(0, 20 - suffix.length)}${suffix}`;
+		if (!(await nicknameExists(db, candidate))) return candidate;
+	}
+	// 사실상 도달하지 않지만, 무한 루프 대신 확실히 유일한 값으로 끝낸다
+	return `회원${crypto.randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * 소셜 계정으로 로그인시킬 유저를 찾거나 만든다.
+ *
+ * 1) 이미 연동된 소셜 계정이면 그 유저
+ * 2) 같은 이메일의 기존 유저가 있으면 연동만 추가 — 단 **구글이 이메일을 검증한 경우에만.**
+ *    미검증 이메일로 연동을 허용하면 남의 이메일을 주장해 계정을 탈취할 수 있다.
+ * 3) 없으면 새로 만든다
+ */
+export async function findOrCreateOAuthUser(
+	db: D1Database,
+	params: {
+		provider: string;
+		providerAccountId: string;
+		email: string;
+		emailVerified: boolean;
+		name: string | null;
+		avatarUrl: string | null;
+	},
+): Promise<{ ok: true; user: AuthUser } | { ok: false; error: string }> {
+	const linked = await db
+		.prepare(
+			`SELECT u.* FROM oauth_accounts oa JOIN users u ON u.id = oa.user_id
+			 WHERE oa.provider = ? AND oa.provider_account_id = ?`,
+		)
+		.bind(params.provider, params.providerAccountId)
+		.first<UserRow>();
+	if (linked) {
+		if (linked.status !== "active") return { ok: false, error: "사용할 수 없는 계정입니다" };
+		return { ok: true, user: toAuthUser(linked) };
+	}
+
+	const existing = await findUserByEmail(db, params.email);
+	if (existing) {
+		if (!params.emailVerified) {
+			return { ok: false, error: "이메일이 확인되지 않은 구글 계정입니다" };
+		}
+		if (existing.status !== "active") return { ok: false, error: "사용할 수 없는 계정입니다" };
+		await db
+			.prepare(
+				"INSERT OR IGNORE INTO oauth_accounts (id, user_id, provider, provider_account_id) VALUES (?, ?, ?, ?)",
+			)
+			.bind(crypto.randomUUID(), existing.id, params.provider, params.providerAccountId)
+			.run();
+		return { ok: true, user: toAuthUser(existing) };
+	}
+
+	const nickname = await findAvailableNickname(db, toNicknameBase(params.name, params.email));
+	const user = await createUser(db, {
+		email: params.email,
+		nickname,
+		avatarUrl: params.avatarUrl,
+	});
+	await db
+		.prepare(
+			"INSERT INTO oauth_accounts (id, user_id, provider, provider_account_id) VALUES (?, ?, ?, ?)",
+		)
+		.bind(crypto.randomUUID(), user.id, params.provider, params.providerAccountId)
+		.run();
+	return { ok: true, user };
 }
 
 // ── 세션 ──────────────────────────────────────────────────────
