@@ -71,7 +71,13 @@ export const GET: APIRoute = async ({ url, cookies, redirect, request, locals })
 
 	// 비로그인 상태에서 localStorage에 쌓인 북마크/팔로우를 계정으로 옮긴다.
 	// 서버 리다이렉트라 클라이언트 스크립트를 못 부르므로, 도착 페이지에서 처리하도록 표시만 남긴다.
-	const target = new URL(safeRedirect(parsed.redirect), url);
+	//
+	// 새로 만들어진 계정은 닉네임이 구글 이름으로 임의 배정된 상태라, 목적지로 바로 보내지 않고
+	// 작명 화면을 한 번 거친다. 원래 가려던 곳은 redirect로 넘겨 거기서 이어받는다.
+	const destination = safeRedirect(parsed.redirect);
+	const target = result.isNew
+		? new URL(`/welcome?redirect=${encodeURIComponent(destination)}`, url)
+		: new URL(destination, url);
 	target.searchParams.set("migrate-local", "1");
 	return redirect(`${target.pathname}${target.search}`, 302);
 };

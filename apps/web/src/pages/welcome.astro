@@ -1,0 +1,142 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getInitialAvatar } from "../lib/userAvatar";
+import { findUserById } from "../lib/server/db";
+import { safeRedirect } from "../lib/server/oauth";
+
+// 가입 직후 작명 화면. 구글 콜백이 새 계정에 한해 여기로 보낸다.
+const user = Astro.locals.user;
+const destination = safeRedirect(Astro.url.searchParams.get("redirect"));
+
+if (!user) {
+	return Astro.redirect(`/login?redirect=${encodeURIComponent("/welcome")}`);
+}
+
+// 이미 자기 이름을 정한 계정이 주소창으로 들어오면 되돌려보낸다(작명은 한 번뿐이다).
+const row = await findUserById(Astro.locals.runtime.env.DB, user.id);
+if (row?.nickname_changed_at) {
+	return Astro.redirect(destination);
+}
+
+const { initial, color } = getInitialAvatar(user.id, user.nickname);
+---
+
+<BaseLayout title="닉네임 설정 - 단숨" description="단숨에서 쓸 이름을 정해주세요">
+	<section class="max-w-sm mx-auto py-12">
+		<h2 class="text-xl font-bold text-center">환영합니다</h2>
+		<p class="mt-2 text-center text-sm text-text-secondary">
+			댓글에 표시될 이름을 정해주세요. 나중에 마이페이지에서 바꿀 수 있습니다.
+		</p>
+
+		<div class="mt-7 flex items-center gap-3">
+			<span
+				id="welcome-avatar"
+				class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
+				style={`background-color: ${color}`}
+			>
+				{initial}
+			</span>
+			<div class="min-w-0 flex-1">
+				<p class="text-xs text-text-secondary">미리보기</p>
+				<p id="welcome-preview" class="truncate font-semibold text-text">{user.nickname}</p>
+			</div>
+		</div>
+
+		<form id="welcome-form" class="mt-4 flex flex-col gap-2" novalidate>
+			<label for="welcome-nickname" class="text-sm text-text-secondary">닉네임</label>
+			<input
+				id="welcome-nickname"
+				name="nickname"
+				type="text"
+				value={user.nickname}
+				minlength="2"
+				maxlength="20"
+				autocomplete="off"
+				autofocus
+				class="w-full rounded-md border border-border bg-surface-alt px-3.5 py-2.5 text-[15px] outline-none transition-colors focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
+			/>
+
+			<div class="flex items-center justify-between gap-3">
+				<p id="welcome-error" role="alert" class="text-sm text-hot"></p>
+				<span id="welcome-count" class="shrink-0 text-xs tabular-nums text-text-secondary">
+					{user.nickname.length} / 20
+				</span>
+			</div>
+
+			<button
+				type="submit"
+				id="welcome-submit"
+				class="mt-2 rounded-full bg-brand py-2.5 text-center text-[15px] font-semibold text-white transition-colors hover:brightness-110 disabled:opacity-50"
+			>
+				시작하기
+			</button>
+		</form>
+
+		<p class="mt-4 text-center">
+			<a
+				id="welcome-skip"
+				href={destination}
+				class="text-sm text-text-secondary underline underline-offset-2 hover:text-text"
+			>
+				지금 이름으로 시작할게요
+			</a>
+		</p>
+	</section>
+</BaseLayout>
+
+<script define:vars={{ destination }}>
+	// define:vars로 넘긴 값을 쓰므로 이 스크립트는 인라인으로 돈다(모듈 import 불가).
+	function setupWelcome() {
+		const form = document.getElementById("welcome-form");
+		const input = document.getElementById("welcome-nickname");
+		const errorEl = document.getElementById("welcome-error");
+		const countEl = document.getElementById("welcome-count");
+		const preview = document.getElementById("welcome-preview");
+		const avatar = document.getElementById("welcome-avatar");
+		const submit = document.getElementById("welcome-submit");
+		if (!form || !input || !errorEl || !countEl || !preview || !avatar || !submit) return;
+
+		input.addEventListener("input", () => {
+			const value = input.value.trim();
+			countEl.textContent = `${input.value.length} / 20`;
+			// 아바타 글자도 같이 바꿔 '이 이름이 이렇게 보인다'를 즉시 알려준다
+			preview.textContent = value || " ";
+			avatar.textContent = value ? [...value][0].toUpperCase() : "?";
+			errorEl.textContent = "";
+		});
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const nickname = input.value.trim();
+			if (nickname.length < 2 || nickname.length > 20) {
+				errorEl.textContent = "닉네임은 2~20자여야 합니다";
+				return;
+			}
+
+			submit.disabled = true;
+			errorEl.textContent = "";
+			try {
+				// 마이페이지 변경과 같은 엔드포인트를 쓴다 — 가입 24시간 안에는 쿨다운이
+				// 적용되지 않으므로(NICKNAME_GRACE_MS) 작명 전용 경로를 따로 둘 필요가 없다.
+				const res = await fetch("/api/me/profile", {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ nickname }),
+				});
+				const data = await res.json();
+				if (!res.ok || !data.success) {
+					errorEl.textContent = data.error ?? "닉네임을 설정하지 못했습니다";
+					submit.disabled = false;
+					return;
+				}
+				// 서버가 세션 캐시를 지웠으므로 전체 이동이면 헤더까지 새 이름으로 그려진다
+				window.location.href = destination;
+			} catch {
+				errorEl.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요";
+				submit.disabled = false;
+			}
+		});
+	}
+
+	document.addEventListener("astro:page-load", setupWelcome);
+</script>

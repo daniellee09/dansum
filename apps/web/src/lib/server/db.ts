@@ -56,6 +56,10 @@ export async function findUserById(db: D1Database, id: string): Promise<UserRow 
 }
 
 const NICKNAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+/** 가입 직후에는 쿨다운을 적용하지 않는다. 소셜 로그인은 구글 이름을 임의로 배정하므로
+ *  첫 작명(/welcome)과 그 직후의 오타 수정까지는 자유로워야 한다 — 여기서 30일을 걸어버리면
+ *  가입하자마자 한 달을 묶이게 된다. 계정 나이로 판단하므로 별도 플래그 컬럼이 필요 없다. */
+const NICKNAME_GRACE_MS = 24 * 60 * 60 * 1000; // 24시간
 
 /** SQLite datetime('now')는 "YYYY-MM-DD HH:MM:SS"(UTC, 타임존 표기 없음)를 반환한다 */
 function parseSqliteUtc(value: string): Date {
@@ -71,7 +75,9 @@ export async function updateNickname(
 	if (!current) return { ok: false, error: "사용자를 찾을 수 없습니다" };
 	if (current.nickname === nickname) return { ok: true };
 
-	if (current.nickname_changed_at) {
+	const accountAge = Date.now() - parseSqliteUtc(current.created_at).getTime();
+	const inGracePeriod = accountAge < NICKNAME_GRACE_MS;
+	if (current.nickname_changed_at && !inGracePeriod) {
 		const elapsed = Date.now() - parseSqliteUtc(current.nickname_changed_at).getTime();
 		if (elapsed < NICKNAME_COOLDOWN_MS) {
 			const daysLeft = Math.ceil((NICKNAME_COOLDOWN_MS - elapsed) / (24 * 60 * 60 * 1000));
@@ -166,7 +172,7 @@ export async function findOrCreateOAuthUser(
 		name: string | null;
 		avatarUrl: string | null;
 	},
-): Promise<{ ok: true; user: AuthUser } | { ok: false; error: string }> {
+): Promise<{ ok: true; user: AuthUser; isNew: boolean } | { ok: false; error: string }> {
 	const linked = await db
 		.prepare(
 			`SELECT u.* FROM oauth_accounts oa JOIN users u ON u.id = oa.user_id
@@ -176,7 +182,7 @@ export async function findOrCreateOAuthUser(
 		.first<UserRow>();
 	if (linked) {
 		if (linked.status !== "active") return { ok: false, error: "사용할 수 없는 계정입니다" };
-		return { ok: true, user: toAuthUser(linked) };
+		return { ok: true, user: toAuthUser(linked), isNew: false };
 	}
 
 	const existing = await findUserByEmail(db, params.email);
@@ -191,7 +197,8 @@ export async function findOrCreateOAuthUser(
 			)
 			.bind(crypto.randomUUID(), existing.id, params.provider, params.providerAccountId)
 			.run();
-		return { ok: true, user: toAuthUser(existing) };
+		// 기존 계정에 연동만 붙인 경우라 이미 자기 이름이 있다 — 작명 화면을 띄우지 않는다.
+		return { ok: true, user: toAuthUser(existing), isNew: false };
 	}
 
 	const nickname = await findAvailableNickname(db, toNicknameBase(params.name, params.email));
@@ -206,7 +213,8 @@ export async function findOrCreateOAuthUser(
 		)
 		.bind(crypto.randomUUID(), user.id, params.provider, params.providerAccountId)
 		.run();
-	return { ok: true, user };
+	// 닉네임을 구글 이름으로 임의 배정한 상태 — 콜백이 이 값을 보고 작명 화면으로 보낸다.
+	return { ok: true, user, isNew: true };
 }
 
 // ── 세션 ──────────────────────────────────────────────────────
@@ -264,6 +272,13 @@ export async function validateSessionToken(
 	const user = toAuthUser(row);
 	await kv.put(cacheKey, JSON.stringify(user), { expirationTtl: SESSION_CACHE_TTL_SECONDS });
 	return user;
+}
+
+/** 프로필(닉네임 등)을 바꾼 뒤 반드시 부른다.
+ *  세션은 KV에 SESSION_CACHE_TTL_SECONDS만큼 캐시되므로, 지우지 않으면 헤더·댓글에
+ *  최대 5분간 옛 닉네임이 그대로 보인다(D1은 이미 새 값인데 화면만 안 바뀐다). */
+export async function invalidateSessionCache(kv: KVNamespace, token: string): Promise<void> {
+	await kv.delete(`${SESSION_CACHE_PREFIX}${await hashToken(token)}`);
 }
 
 export async function revokeSession(db: D1Database, kv: KVNamespace, token: string): Promise<void> {
