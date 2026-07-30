@@ -1,20 +1,8 @@
-/** 댓글(1단 대댓글) + 추천/비추천 + 답글 알림. Phase 1의 db.ts와 분리해 응집도를 유지한다. */
+/** 댓글(1단 대댓글) + 추천 + 답글 알림. Phase 1의 db.ts와 분리해 응집도를 유지한다.
+ *  신고/가림은 별도 축이라 server/reports.ts로 나눠 뒀다. */
 
+import type { CommentDTO, CommentSort } from "@dansum/shared";
 import { awardKarma } from "./karma";
-
-export interface CommentDTO {
-	id: string;
-	articleId: string;
-	author: { id: string; nickname: string; karma: number };
-	parentCommentId: string | null;
-	body: string;
-	status: "active" | "deleted";
-	score: number;
-	createdAt: string;
-	isOwner: boolean;
-	viewerVote: 1 | -1 | 0;
-	replies: CommentDTO[];
-}
 
 interface CommentRow {
 	id: string;
@@ -26,22 +14,53 @@ interface CommentRow {
 	body: string;
 	status: string;
 	score: number;
+	hidden_at: string | null;
 	created_at: string;
+}
+
+// ── 화제순 가중치 ─────────────────────────────────────────────
+// '동의가 많은 댓글'이 아니라 '실제로 논의가 붙은 스레드'를 위로 올린다.
+// 핵심은 답글 수보다 '서로 다른 사람 수'에 훨씬 큰 가중치를 두는 것 —
+// 두 사람이 20번 주고받는 감정 싸움보다, 여덟 명이 한 번씩 붙은 쪽이 더 화제다.
+// (검산: 2명 20답글 = 8.4점 vs 6명 6답글 = 12.2점 → 넓은 논의가 이긴다)
+const W_PARTICIPANT = 3;
+const W_REPLY = 1;
+const W_UPVOTE = 0.5; // 동의는 보조 신호일 뿐이다(추천순 탭이 따로 있다)
+// 답글 0개인 새 댓글이 0점이 되면, 안 보여서 답글이 안 달리고 답글이 없어서 또 안 보이는
+// 콜드스타트에 갇힌다. 그래서 바닥값을 준다.
+const BASE = 1;
+const AGE_OFFSET_HOURS = 2;
+const AGE_EXPONENT = 0.6; // HN식 gravity. 활발한 스레드도 이틀쯤 지나면 새 댓글에 자리를 내준다
+
+function activityScore(c: CommentDTO, nowMs: number): number {
+	const participants = new Set<string>([c.author.id]);
+	for (const r of c.replies) participants.add(r.author.id);
+	const engagement =
+		BASE +
+		// 자기 자신에게 단 답글은 참여자 가산이 0이 된다(participants.size - 1)
+		W_PARTICIPANT * Math.log2(1 + (participants.size - 1)) +
+		W_REPLY * Math.log2(1 + c.replies.length) +
+		W_UPVOTE * Math.log2(1 + Math.max(0, c.score));
+	const ageHours = Math.max(0, (nowMs - Date.parse(c.createdAt)) / 3_600_000);
+	return engagement / (ageHours + AGE_OFFSET_HOURS) ** AGE_EXPONENT;
 }
 
 function toIso(sqliteDatetime: string): string {
 	return `${sqliteDatetime.replace(" ", "T")}Z`;
 }
 
+/** 주의: 페이지네이션이 없다. 화제순은 각 최상위의 '답글 수'와 '서로 다른 참여자 수'가
+ *  전부 있어야 계산되므로 SQL에 LIMIT을 걸 수 없다 — 잘라내면 랭킹이 조용히 틀어진다.
+ *  기사당 수백 개까진 문제없고, 수천 개가 달리면 이 쿼리 하나에서 멈춘다(알고 받는 부채). */
 export async function listComments(
 	db: D1Database,
 	articleId: string,
 	viewerId: string | null,
-	sort: "latest" | "top" = "latest",
+	sort: CommentSort = "active",
 ): Promise<CommentDTO[]> {
 	const { results: rows } = await db
 		.prepare(
-			`SELECT c.id, c.article_id, c.user_id, u.nickname, u.karma, c.parent_comment_id, c.body, c.status, c.score, c.created_at
+			`SELECT c.id, c.article_id, c.user_id, u.nickname, u.karma, c.parent_comment_id, c.body, c.status, c.score, c.hidden_at, c.created_at
 			 FROM comments c JOIN users u ON u.id = c.user_id
 			 WHERE c.article_id = ?
 			 ORDER BY c.created_at ASC`,
@@ -49,17 +68,27 @@ export async function listComments(
 		.bind(articleId)
 		.all<CommentRow>();
 
-	const voteMap = new Map<string, 1 | -1>();
+	const upvoted = new Set<string>();
+	const reported = new Set<string>();
 	if (viewerId && rows.length > 0) {
 		const ids = rows.map((r) => r.id);
 		const placeholders = ids.map(() => "?").join(",");
+		// value = 1 조건은 혹시 남아있을 비추천 행(0008에서 지웠지만)에 대한 이중 방어다.
 		const { results: voteRows } = await db
 			.prepare(
-				`SELECT target_id, value FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id IN (${placeholders})`,
+				`SELECT target_id FROM votes WHERE user_id = ? AND target_type = 'comment' AND value = 1 AND target_id IN (${placeholders})`,
 			)
 			.bind(viewerId, ...ids)
-			.all<{ target_id: string; value: number }>();
-		for (const v of voteRows) voteMap.set(v.target_id, v.value as 1 | -1);
+			.all<{ target_id: string }>();
+		for (const v of voteRows) upvoted.add(v.target_id);
+
+		const { results: reportRows } = await db
+			.prepare(
+				`SELECT comment_id FROM comment_reports WHERE reporter_id = ? AND comment_id IN (${placeholders})`,
+			)
+			.bind(viewerId, ...ids)
+			.all<{ comment_id: string }>();
+		for (const r of reportRows) reported.add(r.comment_id);
 	}
 
 	const byId = new Map<string, CommentDTO>();
@@ -74,9 +103,13 @@ export async function listComments(
 			body: row.status === "deleted" ? "" : row.body,
 			status: row.status as "active" | "deleted",
 			score: row.score,
+			// 가려진 댓글도 본문을 그대로 실어 보낸다('펼쳐보기'를 두 번째 요청 없이 하려고).
+			// 즉 자동 가림은 눈에 안 띄게 하는 마찰 장치이지 보안 통제가 아니다.
+			isHidden: row.hidden_at !== null,
 			createdAt: toIso(row.created_at),
 			isOwner: viewerId === row.user_id,
-			viewerVote: voteMap.get(row.id) ?? 0,
+			viewerUpvoted: upvoted.has(row.id),
+			viewerReported: reported.has(row.id),
 			replies: [],
 		};
 		byId.set(row.id, dto);
@@ -91,14 +124,25 @@ export async function listComments(
 		if (parent && child) parent.replies.push(child);
 	}
 
+	// 삭제됐는데 답글도 없는 최상위는 "삭제된 댓글입니다"만 남는 순수 노이즈라 아예 뺀다.
+	// 답글이 달렸다면 스레드 맥락이 끊기므로 남긴다.
+	const visible = topLevel.filter((c) => c.status !== "deleted" || c.replies.length > 0);
+
 	// 최상위만 정렬 기준을 바꾼다(대댓글은 스레드 흐름을 위해 항상 작성순 유지).
 	// 동점/동시각일 땐 최신이 위로 오도록 createdAt 내림차순을 항상 2차 기준으로 둔다.
-	if (sort === "top") {
-		topLevel.sort((a, b) => b.score - a.score || b.createdAt.localeCompare(a.createdAt));
-	} else {
-		topLevel.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-	}
-	return topLevel;
+	const now = Date.now();
+	visible.sort((a, b) => {
+		// 가려진 댓글은 정렬 탭과 무관하게 언제나 맨 아래로(규칙 하나로 예측 가능하게).
+		if (a.isHidden !== b.isHidden) return a.isHidden ? 1 : -1;
+		if (sort === "active") {
+			return (
+				activityScore(b, now) - activityScore(a, now) || b.createdAt.localeCompare(a.createdAt)
+			);
+		}
+		if (sort === "top") return b.score - a.score || b.createdAt.localeCompare(a.createdAt);
+		return b.createdAt.localeCompare(a.createdAt);
+	});
+	return visible;
 }
 
 export async function createComment(
@@ -107,9 +151,19 @@ export async function createComment(
 ): Promise<{ ok: true; id: string; notifyUserId: string | null } | { ok: false; error: string }> {
 	let notifyUserId: string | null = null;
 
+	// 최상위 댓글은 지금까지 articleId를 전혀 검증하지 않아 아무 문자열이나 받아들였다.
+	// 고아 댓글은 listNotifications의 LEFT JOIN articles도 깨뜨린다.
+	const article = await db
+		.prepare("SELECT 1 FROM articles WHERE id = ?")
+		.bind(params.articleId)
+		.first();
+	if (!article) return { ok: false, error: "기사를 찾을 수 없습니다" };
+
 	if (params.parentCommentId) {
 		const parent = await db
-			.prepare("SELECT article_id, user_id, parent_comment_id FROM comments WHERE id = ? AND status = 'active'")
+			.prepare(
+				"SELECT article_id, user_id, parent_comment_id FROM comments WHERE id = ? AND status = 'active'",
+			)
 			.bind(params.parentCommentId)
 			.first<{ article_id: string; user_id: string; parent_comment_id: string | null }>();
 		if (!parent || parent.article_id !== params.articleId) {
@@ -151,51 +205,66 @@ export async function deleteComment(
 	return { ok: true };
 }
 
+/** 추천 토글. 비추천은 0008에서 폐지했다 — 반대 의견을 묻는 데 쓰였고, 작성자 카르마까지
+ *  깎아서 소수 의견에 이중으로 불이익을 줬다. 반대는 답글로, 규칙 위반은 신고로 간다. */
 export async function voteComment(
 	db: D1Database,
 	commentId: string,
 	userId: string,
-	value: 1 | -1,
-): Promise<{ ok: true; score: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; score: number; upvoted: boolean } | { ok: false; error: string }> {
 	const comment = await db
-		.prepare("SELECT user_id FROM comments WHERE id = ?")
+		.prepare("SELECT user_id, status, hidden_at FROM comments WHERE id = ?")
 		.bind(commentId)
-		.first<{ user_id: string }>();
+		.first<{ user_id: string; status: string; hidden_at: string | null }>();
 	if (!comment) return { ok: false, error: "댓글을 찾을 수 없습니다" };
-	if (comment.user_id === userId) return { ok: false, error: "본인 댓글에는 투표할 수 없습니다" };
+	// 지금까지 status를 안 봐서 삭제된 댓글에도 투표가 되고 카르마까지 적립됐다.
+	if (comment.status === "deleted") return { ok: false, error: "삭제된 댓글입니다" };
+	if (comment.hidden_at !== null) return { ok: false, error: "가려진 댓글에는 추천할 수 없습니다" };
+	if (comment.user_id === userId) return { ok: false, error: "본인 댓글에는 추천할 수 없습니다" };
 
 	const existing = await db
-		.prepare("SELECT value FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?")
+		.prepare(
+			"SELECT value FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?",
+		)
 		.bind(userId, commentId)
 		.first<{ value: number }>();
-	const oldValue = existing?.value ?? 0;
-	const newValue = existing?.value === value ? 0 : value; // 같은 값을 다시 누르면 취소
+	const hadUpvote = existing !== null;
+	const upvoted = !hadUpvote; // 다시 누르면 취소
 
-	if (newValue === 0) {
+	if (upvoted) {
 		await db
-			.prepare("DELETE FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?")
+			.prepare(
+				`INSERT INTO votes (user_id, target_type, target_id, value) VALUES (?, 'comment', ?, 1)
+				 ON CONFLICT(user_id, target_type, target_id) DO UPDATE SET value = 1`,
+			)
 			.bind(userId, commentId)
 			.run();
 	} else {
 		await db
-			.prepare(
-				`INSERT INTO votes (user_id, target_type, target_id, value) VALUES (?, 'comment', ?, ?)
-				 ON CONFLICT(user_id, target_type, target_id) DO UPDATE SET value = excluded.value`,
-			)
-			.bind(userId, commentId, newValue)
+			.prepare("DELETE FROM votes WHERE user_id = ? AND target_type = 'comment' AND target_id = ?")
+			.bind(userId, commentId)
 			.run();
 	}
 
 	const scoreRow = await db
-		.prepare("SELECT COALESCE(SUM(value), 0) as score FROM votes WHERE target_type = 'comment' AND target_id = ?")
+		.prepare(
+			"SELECT COALESCE(SUM(value), 0) as score FROM votes WHERE target_type = 'comment' AND target_id = ?",
+		)
 		.bind(commentId)
 		.first<{ score: number }>();
 	const score = scoreRow?.score ?? 0;
 	await db.prepare("UPDATE comments SET score = ? WHERE id = ?").bind(score, commentId).run();
 
-	await awardKarma(db, comment.user_id, newValue - oldValue, "comment_vote_changed", "comment", commentId);
+	await awardKarma(
+		db,
+		comment.user_id,
+		upvoted ? 1 : -1,
+		"comment_vote_changed",
+		"comment",
+		commentId,
+	);
 
-	return { ok: true, score };
+	return { ok: true, score, upvoted };
 }
 
 // ── 알림 ──────────────────────────────────────────────────────
@@ -203,7 +272,12 @@ export async function voteComment(
 export interface NotificationDTO {
 	id: string;
 	type: string;
-	payload: { articleId: string; commentId: string; fromNickname: string; articleTitle: string | null };
+	payload: {
+		articleId: string;
+		commentId: string;
+		fromNickname: string;
+		articleTitle: string | null;
+	};
 	isRead: boolean;
 	createdAt: string;
 }
