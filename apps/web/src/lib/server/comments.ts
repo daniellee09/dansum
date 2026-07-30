@@ -2,14 +2,15 @@
  *  신고/가림은 별도 축이라 server/reports.ts로 나눠 뒀다. */
 
 import type { CommentDTO, CommentSort } from "@dansum/shared";
-import { awardKarma } from "./karma";
+import { EXP_REWARDS } from "@dansum/shared";
+import { awardExp } from "./exp";
 
 interface CommentRow {
 	id: string;
 	article_id: string;
 	user_id: string;
 	nickname: string;
-	karma: number;
+	exp: number;
 	parent_comment_id: string | null;
 	body: string;
 	status: string;
@@ -60,7 +61,7 @@ export async function listComments(
 ): Promise<CommentDTO[]> {
 	const { results: rows } = await db
 		.prepare(
-			`SELECT c.id, c.article_id, c.user_id, u.nickname, u.karma, c.parent_comment_id, c.body, c.status, c.score, c.hidden_at, c.created_at
+			`SELECT c.id, c.article_id, c.user_id, u.nickname, u.exp, c.parent_comment_id, c.body, c.status, c.score, c.hidden_at, c.created_at
 			 FROM comments c JOIN users u ON u.id = c.user_id
 			 WHERE c.article_id = ?
 			 ORDER BY c.created_at ASC`,
@@ -98,7 +99,7 @@ export async function listComments(
 		const dto: CommentDTO = {
 			id: row.id,
 			articleId: row.article_id,
-			author: { id: row.user_id, nickname: row.nickname, karma: row.karma },
+			author: { id: row.user_id, nickname: row.nickname, exp: row.exp },
 			parentCommentId: row.parent_comment_id,
 			body: row.status === "deleted" ? "" : row.body,
 			status: row.status as "active" | "deleted",
@@ -255,11 +256,12 @@ export async function voteComment(
 	const score = scoreRow?.score ?? 0;
 	await db.prepare("UPDATE comments SET score = ? WHERE id = ?").bind(score, commentId).run();
 
-	await awardKarma(
+	// 추천을 취소하면 줬던 만큼 그대로 회수한다(적립과 회수가 비대칭이면 켰다 껐다로 농사가 된다).
+	await awardExp(
 		db,
 		comment.user_id,
-		upvoted ? 1 : -1,
-		"comment_vote_changed",
+		upvoted ? EXP_REWARDS.commentUpvoted : -EXP_REWARDS.commentUpvoted,
+		"comment_upvoted",
 		"comment",
 		commentId,
 	);

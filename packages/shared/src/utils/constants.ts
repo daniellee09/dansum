@@ -49,6 +49,27 @@ export function parseCommentSort(value: string | null): CommentSort {
 /** 서로 다른 신고자 N명이 모이면 자동으로 접는다. 악용되면 이 숫자만 올리면 된다. */
 export const REPORT_HIDE_THRESHOLD = 3;
 
+// ── 경험치 ────────────────────────────────────────────────────
+
+/**
+ * 활동별 경험치. **추천받기에 가장 큰 비중을 둔 것이 핵심이다** —
+ * 남이 가치 있다고 봐줘야만 크게 오르므로, 아무 말이나 많이 써서 레벨을 올릴 수 없다.
+ * 작성/출석은 참여를 유도하는 최소한의 양념이고, 도배를 막기 위해 작성은 일일 상한을 둔다.
+ */
+export const EXP_REWARDS = {
+	/** 내 댓글이 추천을 받았을 때(취소하면 같은 값만큼 회수) */
+	commentUpvoted: 10,
+	/** 댓글을 썼을 때. EXP_DAILY_COMMENT_LIMIT건까지만 인정 */
+	commentCreated: 3,
+	/** 내 댓글에 답글이 달렸을 때. 논쟁적인 글도 답글이 많이 달리므로 비중을 작게 둔다 */
+	replyReceived: 2,
+	/** 하루 첫 방문 */
+	attendance: 1,
+} as const;
+
+/** 하루에 경험치를 인정하는 댓글 수. 넘겨서 써도 되지만 경험치는 더 오르지 않는다. */
+export const EXP_DAILY_COMMENT_LIMIT = 5;
+
 /** 신고 사유 목록 자체가 정책 선언이다 — '내 의견과 다름'이 없는 것이 핵심이다.
  *  의견 불일치를 신고 사유로 제공하면 반대 의견을 묻는 새 수단을 만들어주는 셈이 된다. */
 export const REPORT_REASONS: ReadonlyArray<{ key: ReportReason; label: string }> = [

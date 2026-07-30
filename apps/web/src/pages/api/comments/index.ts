@@ -1,8 +1,8 @@
-import { COMMENT_MAX_LENGTH, parseCommentSort } from "@dansum/shared";
+import { COMMENT_MAX_LENGTH, EXP_REWARDS, parseCommentSort } from "@dansum/shared";
 import type { APIRoute } from "astro";
 import { createComment, createReplyNotification, listComments } from "../../../lib/server/comments";
 import { json, unauthorized } from "../../../lib/server/http";
-import { checkAndAwardBadges } from "../../../lib/server/karma";
+import { awardCommentCreated, awardExp } from "../../../lib/server/exp";
 
 const MAX_COMMENTS_PER_WINDOW = 10;
 const RATE_WINDOW_SECONDS = 60 * 5;
@@ -65,9 +65,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	await CACHE.put(rateKey, String(count + 1), { expirationTtl: RATE_WINDOW_SECONDS });
-	await checkAndAwardBadges(DB, locals.user.id);
+
+	// 작성 보상(하루 상한 안에서만). 배지 확인도 여기서 함께 돈다.
+	await awardCommentCreated(DB, locals.user.id, result.id);
 
 	if (result.notifyUserId) {
+		// 답글을 받은 쪽에 보상 — 논의를 촉발한 댓글에 주는 몫이다.
+		// 본인이 자기 글에 단 답글이면 notifyUserId가 null이라 자기 적립은 애초에 불가능하다.
+		await awardExp(DB, result.notifyUserId, EXP_REWARDS.replyReceived, "reply_received", "comment", result.id);
 		await createReplyNotification(DB, {
 			toUserId: result.notifyUserId,
 			articleId,

@@ -17,7 +17,8 @@ import {
 	DEFAULT_COMMENT_SORT,
 	REPORT_REASONS,
 	formatRelativeTime,
-	getGrade,
+	getLevel,
+	getGradeByLevel,
 } from "@dansum/shared";
 import { isLoggedIn } from "./auth";
 import { detectTone } from "./tone";
@@ -325,11 +326,13 @@ function renderComment(
 	const body = el("div", "min-w-0 flex-1");
 	wrap.appendChild(body);
 
-	const grade = getGrade(c.author.karma);
+	const level = getLevel(c.author.exp);
+	const grade = getGradeByLevel(level);
 	const head = el("div", "flex items-center gap-2 text-sm");
 	head.appendChild(el("span", "font-semibold text-text", c.author.nickname));
-	if (grade.key !== "newbie") {
-		head.appendChild(el("span", "text-[11px] font-semibold text-brand", grade.label));
+	// 초심자(가입 직후)는 칩을 달지 않는다 — 모두가 달고 있으면 정보가 되지 않는다
+	if (grade.key !== "beginner") {
+		head.appendChild(el("span", "text-[11px] font-semibold text-brand", `Lv.${level} ${grade.label}`));
 	}
 	head.appendChild(el("span", "text-text-secondary text-xs", formatRelativeTime(c.createdAt)));
 	body.appendChild(head);

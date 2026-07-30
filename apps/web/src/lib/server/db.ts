@@ -19,7 +19,9 @@ interface UserRow {
 	avatar_url: string | null;
 	status: string;
 	role: string;
+	/** 0009 이후로는 exp를 쓴다. karma는 남아만 있는 옛 컬럼(정리는 다음 마이그레이션에서). */
 	karma: number;
+	exp: number;
 	nickname_changed_at: string | null;
 	created_at: string;
 }

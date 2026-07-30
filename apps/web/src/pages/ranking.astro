@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { getGrade } from "@dansum/shared";
-import { getRanking } from "../lib/server/karma";
+import { getLevel, getGradeByLevel } from "@dansum/shared";
+import { getRanking } from "../lib/server/exp";
 import { getInitialAvatar } from "../lib/userAvatar";
 
 // 랭킹 노출 방식(등급 구간? 카르마 상위 N? 기간별?)이 아직 확정되지 않아 페이지를 잠시 막아둔다.
@@ -9,7 +9,7 @@ import { getInitialAvatar } from "../lib/userAvatar";
 return Astro.redirect("/");
 
 // 매 요청마다 정렬 쿼리를 돌리지 않도록 짧게 스냅샷 캐시(apps/api의 kvCache 패턴과 같은 아이디어).
-const CACHE_KEY = "ranking:top50";
+const CACHE_KEY = "ranking:exp:top50";
 const CACHE_TTL = 300;
 
 const { DB, CACHE } = Astro.locals.runtime.env;
@@ -25,10 +25,10 @@ if (cached) {
 }
 ---
 
-<BaseLayout title="랭킹 - 단숨" description="댓글 추천으로 쌓은 카르마 랭킹">
+<BaseLayout title="랭킹 - 단숨" description="활동으로 쌓은 경험치 랭킹">
 	<section>
 		<h2 class="text-lg font-bold mb-1">랭킹</h2>
-		<p class="text-[13px] text-text-secondary mb-4">댓글이 추천을 받을수록 카르마가 올라갑니다</p>
+		<p class="text-[13px] text-text-secondary mb-4">댓글이 추천을 받을수록 경험치가 많이 올라갑니다</p>
 
 		{ranking.length === 0 ? (
 			<p class="py-20 text-center text-text-secondary">아직 랭킹에 오른 유저가 없습니다</p>
@@ -36,7 +36,8 @@ if (cached) {
 			<ol class="divide-y divide-border border-t border-border">
 				{ranking.map((entry, i) => {
 					const avatar = getInitialAvatar(entry.id, entry.nickname);
-					const grade = getGrade(entry.karma);
+					const level = getLevel(entry.exp);
+					const grade = getGradeByLevel(level);
 					return (
 						<li class="flex items-center gap-3 py-3">
 							<span class="w-6 shrink-0 text-center text-sm font-bold text-text-secondary tabular-nums">
@@ -53,11 +54,11 @@ if (cached) {
 								<div class="flex items-center gap-1.5">
 									<span class="font-semibold text-text truncate">{entry.nickname}</span>
 									<span class="shrink-0 rounded-full bg-brand/10 px-1.5 py-0.5 text-[11px] font-semibold text-brand">
-										{grade.label}
+										Lv.{level} {grade.label}
 									</span>
 								</div>
 							</div>
-							<span class="text-sm font-bold text-text tabular-nums">{entry.karma}</span>
+							<span class="text-sm font-bold text-text tabular-nums">{entry.exp.toLocaleString()}</span>
 						</li>
 					);
 				})}

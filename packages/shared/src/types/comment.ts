@@ -4,7 +4,8 @@
 export interface CommentAuthor {
 	id: string;
 	nickname: string;
-	karma: number;
+	/** 레벨·등급은 이 값으로 클라이언트에서 계산한다(shared의 순수 함수). */
+	exp: number;
 }
 
 export interface CommentDTO {

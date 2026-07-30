@@ -1,7 +1,15 @@
 export { hashUrl } from "./hash.js";
 export { generateSessionToken, hashToken } from "./auth.js";
-export { getGrade } from "./grade.js";
-export type { Grade } from "./grade.js";
+export {
+	getGrade,
+	getGradeByLevel,
+	getLevel,
+	getLevelProgress,
+	expForLevel,
+	GRADES,
+	MAX_LEVEL,
+} from "./level.js";
+export type { Grade, LevelProgress } from "./level.js";
 export { normalizeSections } from "./sections.js";
 export { formatKoreanDate, formatRelativeTime, toISOString } from "./date.js";
 export {
@@ -18,4 +26,6 @@ export {
 	REPORT_HIDE_THRESHOLD,
 	REPORT_REASONS,
 	isReportReason,
+	EXP_REWARDS,
+	EXP_DAILY_COMMENT_LIMIT,
 } from "./constants.js";
