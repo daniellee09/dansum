@@ -23,6 +23,7 @@ interface ArticleRow {
 	published_at: string;
 	summarized_at: string;
 	created_at: string;
+	issue_id: string | null;
 }
 
 function safeParseArray(json: string): string[] {
@@ -65,6 +66,7 @@ function rowToArticle(row: ArticleRow): Article {
 		publishedAt: row.published_at,
 		summarizedAt: row.summarized_at,
 		createdAt: row.created_at,
+		issueId: row.issue_id ?? null,
 	};
 }
 
@@ -221,48 +223,12 @@ export async function getArticleById(
 	return row ? rowToArticle(row) : null;
 }
 
-/** 키워드 정규화: 공백·구두점 제거 + 소문자화(한글은 영향 없음) */
-function normalizeKeyword(k: string): string {
-	return k
-		.trim()
-		.toLowerCase()
-		.replace(/[\s·().,"'“”\-_/]/g, "");
-}
-
-/** 두 정규화 키워드 집합의 공통 개수 */
-function sharedCount(a: Set<string>, b: Set<string>): number {
-	let n = 0;
-	for (const k of a) {
-		if (b.has(k)) n++;
-	}
-	return n;
-}
-
 /** ISO 시각 → 현재로부터 경과 시간(시간 단위). null/파싱 실패는 매우 오래된 값. */
 function hoursSince(iso: string | null, nowMs: number): number {
 	if (!iso) return 1e6;
 	const t = new Date(iso).getTime();
 	if (Number.isNaN(t)) return 1e6;
 	return Math.max(0, (nowMs - t) / 3_600_000);
-}
-
-/** 클러스터의 안정적 식별자: 멤버 키워드 빈도 상위 2개를 정렬·결합.
- *  (상위 4개는 멤버 변동에 따라 꼬리 키워드가 자주 바뀌어 지문이 불안정 → 순위변동이 항상 NEW로 떨어짐.
- *   핵심 1~2개 키워드는 같은 이슈에서 안정적이라 30분 스냅샷 비교가 실제로 매칭된다.) */
-function clusterFingerprint(members: Article[]): string {
-	const freq: Record<string, number> = {};
-	for (const m of members) {
-		for (const k of m.keywords) {
-			const nk = normalizeKeyword(k);
-			if (nk) freq[nk] = (freq[nk] || 0) + 1;
-		}
-	}
-	return Object.entries(freq)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 2)
-		.map(([k]) => k)
-		.sort()
-		.join("|");
 }
 
 interface RankSnapshot {
@@ -280,7 +246,10 @@ const CANDIDATE_WINDOW_HOURS = 30;
 const SCORE_HALF_LIFE_HOURS = 16;
 
 interface CoverageCluster {
-	keywordSet: Set<string>;
+	/** 스냅샷·링크에 쓰는 안정적 키. 배정된 기사는 issue_id, 미배정 기사는 "article:<id>". */
+	key: string;
+	/** 영구 이슈에 배정된 묶음이면 이슈 id, 미배정 기사 단독 묶음이면 null. */
+	issueId: string | null;
 	members: Article[];
 	sourceIds: Set<string>;
 	/** 보도량(매체 수) × 신선도 감쇠. 많은 매체가 다룰수록 ↑, 오래될수록 완만히 ↓.
@@ -289,47 +258,44 @@ interface CoverageCluster {
 }
 
 /**
- * 키워드 공유 기반 클러스터링 + 점수 산출. "오늘의 주요 뉴스"(getTopClusters)와
- * 인기순 정렬(getArticlesHot)이 공유하는 핵심 로직.
- * articles는 최신순(published_at DESC)이어야 각 클러스터의 첫 멤버가 대표(lead)가 된다.
+ * 기사 배열을 영구 이슈(articles.issue_id)로 묶고 보도량 점수를 매긴다.
+ *
+ * 예전에는 여기서 키워드 겹침을 매 요청 다시 계산했다(buildCoverageClusters). 지금은 수집
+ * 시점에 정해진 묶음을 읽기만 한다 — 클러스터에 영구 id가 생겨야 댓글이 붙을 수 있어서다.
+ *
+ * 중요: issues 테이블의 article_count/source_count(전역 집계)를 읽지 않고, **호출자가 이미
+ * 필터링해서 가져온 행들**만 그룹핑한다. getArticlesHot은 category/source/q 필터를 클러스터링
+ * 전에 적용하므로 지금의 coverage는 "필터 안에서의 보도량"이고, 전역 집계로 바꾸면
+ * /source/xxx?sort=hot 같은 화면의 의미가 조용히 달라진다.
+ *
+ * articles는 최신순(published_at DESC)이어야 각 묶음의 첫 멤버가 대표(lead)가 된다.
  */
-function buildCoverageClusters(articles: Article[], nowMs: number): CoverageCluster[] {
-	const MIN_SHARED = 2; // 같은 사건으로 보려면 최소 2개 키워드 공유
-	const clusters: Omit<CoverageCluster, "score">[] = [];
+function groupByIssue(articles: Article[], nowMs: number): CoverageCluster[] {
+	const byKey = new Map<string, Omit<CoverageCluster, "score">>();
 
 	for (const article of articles) {
-		const kw = new Set(article.keywords.map(normalizeKeyword).filter(Boolean));
-		let placed = false;
-		if (kw.size > 0) {
-			for (const cluster of clusters) {
-				if (sharedCount(kw, cluster.keywordSet) >= MIN_SHARED) {
-					cluster.members.push(article);
-					cluster.sourceIds.add(article.sourceId);
-					for (const k of kw) cluster.keywordSet.add(k);
-					placed = true;
-					break;
-				}
-			}
+		// 아직 이슈가 배정되지 않은 기사(컬렉터 드레인 대기)는 단독 묶음으로 둔다.
+		// 이 폴백이 없으면 마이그레이션 직후 홈 전체가 거대한 "null" 묶음 하나가 된다.
+		const key = article.issueId ?? `article:${article.id}`;
+		let cluster = byKey.get(key);
+		if (!cluster) {
+			cluster = { key, issueId: article.issueId, members: [], sourceIds: new Set() };
+			byKey.set(key, cluster);
 		}
-		if (!placed) {
-			clusters.push({
-				keywordSet: kw,
-				members: [article],
-				sourceIds: new Set([article.sourceId]),
-			});
-		}
+		cluster.members.push(article);
+		cluster.sourceIds.add(article.sourceId);
 	}
 
-	return clusters.map((c) => ({
+	return [...byKey.values()].map((c) => ({
 		...c,
 		score: c.sourceIds.size * 0.5 ** (hoursSince(c.members[0].publishedAt, nowMs) / SCORE_HALF_LIFE_HOURS),
 	}));
 }
 
-/** 기사 배열을 보도량 점수(buildCoverageClusters) 내림차순으로 정렬(동점은 최신순).
+/** 기사 배열을 보도량 점수(groupByIssue) 내림차순으로 정렬(동점은 최신순).
  *  getArticlesHot·getHotArticles가 공유한다. */
 function sortByHotness(articles: Article[], nowMs: number): Article[] {
-	const clusters = buildCoverageClusters(articles, nowMs);
+	const clusters = groupByIssue(articles, nowMs);
 	const scoreById = new Map<string, number>();
 	for (const c of clusters) {
 		for (const m of c.members) scoreById.set(m.id, c.score);
@@ -454,7 +420,7 @@ export async function getTopClusters(
 
 	const articles = rows.map(rowToArticle);
 	const nowMs = Date.now();
-	const clusters = buildCoverageClusters(articles, nowMs);
+	const clusters = groupByIssue(articles, nowMs);
 
 	const scored = clusters.map((c) => ({ c, s: c.score }));
 	scored.sort((a, b) => {
@@ -465,7 +431,10 @@ export async function getTopClusters(
 	const topClusters = scored.slice(0, limit).map((x) => x.c);
 
 	// ── 순위 변동 계산 (KV 스냅샷 비교) ──────────────────────────────────
-	const fingerprints = topClusters.map((c) => clusterFingerprint(c.members));
+	// 예전에는 멤버 키워드로 매번 지문을 다시 뽑았고, 멤버가 하나만 바뀌어도 지문이 달라져
+	// 사실상 모든 행이 NEW로 떨어졌다. 이제 이슈 id가 그 자체로 안정적인 키다.
+	// (그래서 대부분의 행이 "변동 없음"으로 표시되는 게 정상이다 — 회귀가 아니다.)
+	const snapshotKeys = topClusters.map((c) => c.key);
 	let prevRankings: Record<string, number> = {};
 	let hasValidSnapshot = false;
 
@@ -488,7 +457,7 @@ export async function getTopClusters(
 			// 스냅샷이 없거나 만료됐으면 현재 순위로 새 스냅샷 저장
 			if (!hasValidSnapshot) {
 				const newSnap: RankSnapshot = {
-					rankings: Object.fromEntries(fingerprints.map((fp, i) => [fp, i + 1])),
+					rankings: Object.fromEntries(snapshotKeys.map((key, i) => [key, i + 1])),
 					savedAt: new Date().toISOString(),
 				};
 				await kv.put("rankings:snapshot", JSON.stringify(newSnap), {
@@ -503,9 +472,8 @@ export async function getTopClusters(
 	// ─────────────────────────────────────────────────────────────────────
 
 	return topClusters.map((c, i) => {
-		const fp = fingerprints[i];
 		const currentRank = i + 1;
-		const prevRank = hasValidSnapshot ? prevRankings[fp] : undefined;
+		const prevRank = hasValidSnapshot ? prevRankings[c.key] : undefined;
 		// 양수 = 상승, 음수 = 하락, null = 신규 진입
 		const rankChange: number | null =
 			prevRank !== undefined ? prevRank - currentRank : null;
@@ -513,6 +481,7 @@ export async function getTopClusters(
 		const sourceNames = [...new Set(c.members.map((m) => m.sourceName))];
 		return {
 			lead: c.members[0],
+			issueId: c.issueId,
 			coverage: c.sourceIds.size,
 			sourceNames,
 			articleIds: c.members.map((m) => m.id),
@@ -523,8 +492,11 @@ export async function getTopClusters(
 
 /**
  * 같은 이슈를 보도한 다른 기사("관련 보도").
- * 기준 기사와 키워드를 MIN_SHARED개 이상 공유하는 최신 후보를 찾아
- * 매체(sourceId)별로 1건씩만, 공유 키워드 수·최신순으로 정렬해 반환.
+ *
+ * 예전에는 최근 3일 400건을 훑어 키워드 겹침을 매번 다시 계산했다. 이제 이슈가 영속하므로
+ * 인덱스(idx_articles_issue) 한 번으로 끝난다 — 성능만이 아니라, 이 목록과 이슈 페이지의
+ * 멤버 목록이 **같은 정의**를 쓰게 된다는 게 더 중요하다(따로 계산하면 둘이 어긋난다).
+ * 매체별 1건만 남기는 규칙은 그대로다("다른 매체가 어떻게 다뤘나"가 이 위젯의 목적이라서).
  */
 export async function getRelatedArticles(
 	db: D1Database,
@@ -532,48 +504,65 @@ export async function getRelatedArticles(
 	limit = 5,
 ): Promise<Article[]> {
 	const base = await getArticleById(db, id);
-	if (!base) return [];
-
-	const baseKw = new Set(base.keywords.map(normalizeKeyword).filter(Boolean));
-	if (baseKw.size === 0) return [];
+	if (!base?.issueId) return [];
 
 	const rows = (
 		await db
 			.prepare(
-				`SELECT * FROM articles WHERE published_at >= datetime('now','-3 days')
-				 ORDER BY published_at DESC LIMIT 400`,
+				`SELECT * FROM articles WHERE issue_id = ? AND id != ?
+				 ORDER BY published_at DESC LIMIT 100`,
 			)
+			.bind(base.issueId, id)
 			.all<ArticleRow>()
 	).results;
-
-	const MIN_SHARED = 2;
-	const scored: { article: Article; shared: number }[] = [];
-
-	for (const row of rows) {
-		if (row.id === id) continue;
-		const a = rowToArticle(row);
-		const kw = new Set(a.keywords.map(normalizeKeyword).filter(Boolean));
-		const shared = sharedCount(baseKw, kw);
-		if (shared >= MIN_SHARED) scored.push({ article: a, shared });
-	}
-
-	// 공유 키워드 수 DESC, 동률이면 최신순
-	scored.sort((x, y) => {
-		if (y.shared !== x.shared) return y.shared - x.shared;
-		return y.article.publishedAt.localeCompare(x.article.publishedAt);
-	});
 
 	// 매체별 1건만(기준 기사와 같은 매체는 제외해 "다른 매체" 의미 유지)
 	const seenSources = new Set<string>([base.sourceId]);
 	const result: Article[] = [];
-	for (const { article } of scored) {
-		if (seenSources.has(article.sourceId)) continue;
-		seenSources.add(article.sourceId);
-		result.push(article);
+	for (const row of rows) {
+		if (seenSources.has(row.source_id)) continue;
+		seenSources.add(row.source_id);
+		result.push(rowToArticle(row));
 		if (result.length >= limit) break;
 	}
 
 	return result;
+}
+
+export interface IssueDetail {
+	id: string;
+	/** 대표 기사(이슈 내 최신). 멤버가 반드시 1건 이상이라 항상 존재한다. */
+	lead: Article;
+	/** 이슈에 속한 기사 전체(최신순). 관련 보도와 달리 매체별로 추리지 않는다. */
+	articles: Article[];
+	/** 보도 매체 수 */
+	coverage: number;
+	sourceNames: string[];
+	firstPublishedAt: string | null;
+	lastPublishedAt: string | null;
+}
+
+/** 이슈 상세: 이슈에 속한 기사 전체. issues 테이블의 비정규화 집계는 읽지 않고
+ *  실제 멤버 행에서 센다(집계가 한 tick 늦어도 화면이 어긋나지 않게). */
+export async function getIssue(db: D1Database, id: string): Promise<IssueDetail | null> {
+	const rows = (
+		await db
+			.prepare("SELECT * FROM articles WHERE issue_id = ? ORDER BY published_at DESC LIMIT 100")
+			.bind(id)
+			.all<ArticleRow>()
+	).results;
+	if (rows.length === 0) return null;
+
+	const articles = rows.map(rowToArticle);
+	return {
+		id,
+		lead: articles[0],
+		articles,
+		coverage: new Set(articles.map((a) => a.sourceId)).size,
+		sourceNames: [...new Set(articles.map((a) => a.sourceName))],
+		firstPublishedAt: articles[articles.length - 1].publishedAt,
+		lastPublishedAt: articles[0].publishedAt,
+	};
 }
 
 export async function getCategories(db: D1Database) {
