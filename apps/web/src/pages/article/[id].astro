@@ -193,11 +193,32 @@ if (!article && !error) return Astro.redirect("/");
 				)}
 
 				<!-- 키워드 -->
+				{/* 키워드 칩: 검색으로 가는 링크 + 알림 벨. 벨을 칩 안에 붙이는 이유는,
+				     "이 키워드로 알림 받기"를 결정하는 순간이 바로 그 키워드를 보고 있는 지금이라서다.
+				     별도 설정 화면까지 찾아가야 하면 아무도 등록하지 않는다. */}
 				{article.keywords.length > 0 && (
 					<div class="flex flex-wrap gap-2 mb-8">
 						{article.keywords.map((kw) => (
-							<span class="text-[13px] text-text-secondary bg-surface-alt px-2.5 py-1 rounded">
-								#{kw}
+							<span class="inline-flex items-center rounded bg-surface-alt text-[13px] text-text-secondary">
+								<a
+									href={`/search?q=${encodeURIComponent(kw)}`}
+									class="rounded-l px-2.5 py-1 transition-colors hover:text-text"
+								>
+									#{kw}
+								</a>
+								<button
+									type="button"
+									data-keyword-alert
+									data-keyword={kw}
+									aria-pressed="false"
+									aria-label={`${kw} 알림 받기`}
+									title={`${kw} 알림 받기`}
+									class="keyword-bell rounded-r py-1 pr-2 pl-0.5 text-text-secondary transition-colors hover:text-text"
+								>
+									<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M18 8a6 6 0 10-12 0c0 6-2 7-2 7h16s-2-1-2-7M10.5 20a2 2 0 003 0" />
+									</svg>
+								</button>
 							</span>
 						))}
 					</div>
@@ -237,12 +258,22 @@ if (!article && !error) return Astro.redirect("/");
 					</a>
 				</div>
 
-				<!-- 댓글: 계정 데이터라 클라이언트에서 그린다(lib/comments.ts) -->
+				<!-- 댓글: 계정 데이터라 클라이언트에서 그린다(lib/comments.ts).
+				     스레드의 단위는 기사가 아니라 이슈다 — 같은 사건을 다룬 다른 매체 기사에서 쓴 댓글도
+				     여기 함께 보인다. 그렇다고 /issue/[id]로 리다이렉트하지는 않는다(독자가 고른 건 이 기사다). -->
 				<div class="mt-8 pt-6 border-t border-border" data-comments data-article-id={article.id}>
-					<h2 class="text-lg font-bold mb-4">
+					<h2 class="text-lg font-bold mb-1">
 						댓글 <span data-comment-count>0</span>
 					</h2>
-					<div data-comment-form-wrap class="mb-6"></div>
+					{/* 숫자를 쓰지 않는다: related는 매체별 1건씩 추린 목록(limit 5)이라 이슈의 실제
+					     기사 수와 다르다. 정확한 수를 쓰겠다고 /api/issues를 한 번 더 부르느니 세지 않는다. */}
+					{article.issueId && related.length > 0 && (
+						<p class="mb-4 text-[13px] text-text-secondary">
+							같은 이슈를 다룬 다른 매체의 의견도 함께 보입니다 ·{" "}
+							<a href={`/issue/${article.issueId}`} class="text-brand hover:underline">이슈 전체 보기</a>
+						</p>
+					)}
+					<div data-comment-form-wrap class="mt-4 mb-6"></div>
 					<div data-comment-list></div>
 				</div>
 			</article>
@@ -376,8 +407,14 @@ if (!article && !error) return Astro.redirect("/");
 		const id = document.querySelector<HTMLElement>("[data-article-id]")?.dataset.articleId;
 		if (id) addRecentlyViewed(id);
 
+		// articleId로 스코프를 잡으면 서버가 이슈로 환원해 이슈 전체 스레드를 돌려준다.
+		// 여기서만 articleId를 함께 넘기는 이유는 origin 라벨("연합뉴스에서") 판정 때문이다 —
+		// 지금 보고 있는 기사에서 쓴 댓글에는 라벨을 붙이지 않는다.
 		const commentsRoot = document.querySelector<HTMLElement>("[data-comments]");
-		if (commentsRoot?.dataset.articleId) mountComments(commentsRoot, commentsRoot.dataset.articleId);
+		const commentArticleId = commentsRoot?.dataset.articleId;
+		if (commentsRoot && commentArticleId) {
+			mountComments(commentsRoot, { articleId: commentArticleId, postTo: commentArticleId });
+		}
 	});
 </script>
 

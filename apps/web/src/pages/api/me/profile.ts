@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import {
 	findUserById,
 	invalidateSessionCache,
+	setNotifyKeyword,
 	toAuthUser,
 	updateNickname,
 } from "../../../lib/server/db";
@@ -18,11 +19,18 @@ export const GET: APIRoute = async ({ locals }) => {
 export const PATCH: APIRoute = async ({ request, cookies, locals }) => {
 	if (!locals.user) return unauthorized();
 
-	let body: { nickname?: string };
+	let body: { nickname?: string; notifyKeyword?: boolean };
 	try {
 		body = await request.json();
 	} catch {
 		return json({ success: false, error: "잘못된 요청입니다" }, { status: 400 });
+	}
+
+	// 알림 설정만 바꾸는 요청. 닉네임과 달리 30일 쿨다운도 세션 캐시 무효화도 필요 없어
+	// 별도 엔드포인트를 만들지 않고 여기서 일찍 끝낸다.
+	if (typeof body.notifyKeyword === "boolean" && body.nickname === undefined) {
+		await setNotifyKeyword(locals.runtime.env.DB, locals.user.id, body.notifyKeyword);
+		return json({ success: true });
 	}
 
 	const nickname = body.nickname?.trim();

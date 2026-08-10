@@ -7,15 +7,18 @@ import { awardCommentCreated, awardExp } from "../../../lib/server/exp";
 const MAX_COMMENTS_PER_WINDOW = 10;
 const RATE_WINDOW_SECONDS = 60 * 5;
 
+// 스레드의 단위는 이슈다. 기사 페이지는 articleId로(서버가 이슈로 환원), 이슈 페이지는
+// issueId로 부른다. 쓰기(POST)는 여전히 articleId만 받는다 — 아래 주석 참고.
 export const GET: APIRoute = async ({ url, locals }) => {
 	const articleId = url.searchParams.get("articleId");
-	if (!articleId) {
-		return json({ success: false, error: "articleId가 필요합니다" }, { status: 400 });
+	const issueId = url.searchParams.get("issueId");
+	if (!articleId && !issueId) {
+		return json({ success: false, error: "articleId 또는 issueId가 필요합니다" }, { status: 400 });
 	}
 	const sort = parseCommentSort(url.searchParams.get("sort"));
 	const comments = await listComments(
 		locals.runtime.env.DB,
-		articleId,
+		issueId ? { issueId } : { articleId: articleId as string },
 		locals.user?.id ?? null,
 		sort,
 	);
@@ -32,6 +35,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		return json({ success: false, error: "잘못된 요청입니다" }, { status: 400 });
 	}
 
+	// 쓰기는 articleId만 받는다. issue_id는 createComment가 기사에서 파생한다 —
+	// 클라이언트가 그룹핑 키를 직접 정하게 두면 위조 가능하고 진실의 출처가 둘이 된다.
 	const articleId = body.articleId;
 	const parentCommentId = body.parentCommentId ?? null;
 	const text = body.body?.trim() ?? "";

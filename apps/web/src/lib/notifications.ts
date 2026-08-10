@@ -5,10 +5,44 @@ import { isLoggedIn } from "./auth";
 
 interface NotificationDTO {
 	id: string;
+	/** 'reply' | 'keyword' */
 	type: string;
-	payload: { articleId: string; commentId: string; fromNickname: string; articleTitle: string | null };
+	payload: {
+		articleId: string;
+		articleTitle: string | null;
+		commentId?: string;
+		fromNickname?: string;
+		issueId?: string;
+		keyword?: string;
+	};
 	isRead: boolean;
 	createdAt: string;
+}
+
+/** 알림 종류별 링크와 첫 줄. 새 종류를 추가할 때 손댈 곳이 여기 하나가 되도록 모아둔다. */
+function notificationLink(n: NotificationDTO): string {
+	// 키워드 알림은 이슈 전체를 보여준다 — 알림이 가리키는 건 기사 한 건이 아니라 사건이다.
+	if (n.type === "keyword" && n.payload.issueId) return `/issue/${n.payload.issueId}`;
+	// 답글은 그 댓글까지 데려간다. 기사 최상단에 떨궈놓으면 어떤 답글인지 찾는 건 사용자 몫이 된다
+	// (긴 스레드에서 사실상 못 찾는다). comments.ts의 focusHashComment가 받는다.
+	if (n.payload.commentId) return `/article/${n.payload.articleId}#comment-${n.payload.commentId}`;
+	return `/article/${n.payload.articleId}`;
+}
+
+/** 첫 줄을 만든다. 사용자가 정한 값(닉네임·키워드)은 textContent로만 넣는다(XSS 방지). */
+export function notificationHeadline(n: NotificationDTO): HTMLElement {
+	const line = document.createElement("p");
+	line.className = "text-text";
+	const strong = document.createElement("span");
+	strong.className = "font-semibold";
+	if (n.type === "keyword") {
+		strong.textContent = n.payload.keyword ?? "";
+		line.append(strong, " 관련 새 이슈가 올라왔습니다");
+	} else {
+		strong.textContent = n.payload.fromNickname ?? "";
+		line.append(strong, "님이 댓글에 답글을 남겼습니다");
+	}
+	return line;
 }
 
 export async function setupNotificationBell(): Promise<void> {
@@ -40,19 +74,13 @@ export async function setupNotificationBell(): Promise<void> {
 		}
 		for (const n of notifications) {
 			const a = document.createElement("a");
-			a.href = `/article/${n.payload.articleId}`;
+			a.href = notificationLink(n);
 			a.className = `block px-3.5 py-2.5 text-sm hover:bg-surface-alt transition-colors ${n.isRead ? "" : "bg-brand/5"}`;
 			a.addEventListener("click", () => {
 				fetch(`/api/me/notifications/${n.id}/read`, { method: "POST" }).catch(() => {});
 			});
 			const title = n.payload.articleTitle ?? "삭제된 기사";
-			const line1 = document.createElement("p");
-			line1.className = "text-text";
-			// fromNickname은 다른 유저가 정한 값이라 innerHTML로 합치지 않고 textContent로만 넣는다(XSS 방지)
-			const nicknameEl = document.createElement("span");
-			nicknameEl.className = "font-semibold";
-			nicknameEl.textContent = n.payload.fromNickname;
-			line1.append(nicknameEl, "님이 댓글에 답글을 남겼습니다");
+			const line1 = notificationHeadline(n);
 			const line2 = document.createElement("p");
 			line2.className = "text-text-secondary text-xs mt-0.5 truncate";
 			line2.textContent = title;

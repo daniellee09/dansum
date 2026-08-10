@@ -56,6 +56,22 @@ export async function getRelatedArticles(id: string, limit = 5) {
 	return fetchApi<Article[]>(`/api/articles/${id}/related?limit=${limit}`);
 }
 
+/** 이슈(같은 사건을 다룬 기사 묶음) 상세. 논의(댓글)는 여기 오지 않는다 —
+ *  계정 도메인이라 apps/web이 D1에서 직접 읽는다. */
+export interface IssueDetail {
+	id: string;
+	lead: Article;
+	articles: Article[];
+	coverage: number;
+	sourceNames: string[];
+	firstPublishedAt: string | null;
+	lastPublishedAt: string | null;
+}
+
+export async function getIssue(id: string) {
+	return fetchApi<IssueDetail>(`/api/issues/${id}`);
+}
+
 export async function getCategories() {
 	return fetchApi<Array<{ category: string; count: number }>>("/api/categories");
 }

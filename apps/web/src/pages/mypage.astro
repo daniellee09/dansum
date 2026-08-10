@@ -3,9 +3,9 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import ArticleCard from "../components/ArticleCard.astro";
 import { CATEGORY_LABELS, formatKoreanDate, getLevelProgress, MAX_LEVEL } from "@dansum/shared";
 import type { Category } from "@dansum/shared";
-import { listBookmarkIds, listFollows, getSourceNames, findUserById } from "../lib/server/db";
+import { listBookmarkIds, listFollows, getSourceNames, findUserById, getNotifyKeyword } from "../lib/server/db";
 import { isAdmin } from "../lib/server/admin";
-import { getUserBadges } from "../lib/server/exp";
+import { getAttendanceStreak, getUserBadges } from "../lib/server/exp";
 import { getInitialAvatar } from "../lib/userAvatar";
 import { getArticle } from "../lib/api";
 
@@ -15,11 +15,13 @@ if (!user) return Astro.redirect("/login?redirect=/mypage");
 const db = Astro.locals.runtime.env.DB;
 const BOOKMARK_PREVIEW = 5;
 
-const [bookmarkIds, follows, userRow, badges] = await Promise.all([
+const [bookmarkIds, follows, userRow, badges, attendanceStreak, notifyKeyword] = await Promise.all([
 	listBookmarkIds(db, user.id),
 	listFollows(db, user.id),
 	findUserById(db, user.id),
 	getUserBadges(db, user.id),
+	getAttendanceStreak(db, user.id),
+	getNotifyKeyword(db, user.id),
 ]);
 const exp = userRow?.exp ?? 0;
 const { level, grade, isMax, percent, expToNext } = getLevelProgress(exp);
@@ -113,6 +115,9 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 			</div>
 			<p class="mt-2 text-xs text-text-secondary">
 				댓글이 추천을 받으면 가장 많이 오릅니다. 댓글 작성·답글·출석으로도 조금씩 쌓입니다.
+				{/* 하루 방문한 것을 "연속"이라 부를 수는 없어 2일부터만 보여준다. 배지도 강조색도 주지
+				    않는다 — 매일 와야 한다는 압박이 아니라 이미 온 사실을 알려주는 한 줄이면 된다. */}
+				{attendanceStreak >= 2 && ` ${attendanceStreak}일 연속 방문 중입니다.`}
 			</p>
 		</div>
 
@@ -175,6 +180,52 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 								data-follow-type="category"
 								data-follow-value={category}
 								aria-label={`${CATEGORY_LABELS[category as Category] ?? category} 팔로우 해제`}
+								class="w-5 h-5 flex items-center justify-center rounded-full text-text-secondary hover:text-text hover:bg-surface-alt leading-none"
+							>
+								×
+							</button>
+						</span>
+					))}
+				</div>
+			)}
+		</div>
+
+		<!-- 설정: 별도 /settings 페이지를 만들지 않는다. 인증·레이아웃·닉네임·팔로우가 전부
+		     여기 있어서, 페이지를 나누면 같은 것을 두 벌 유지하게 된다. 헤더/사이드바가
+		     #settings로 링크한다. -->
+		<div id="settings" class="scroll-mt-[calc(var(--header-h)+1rem)]">
+			<h3 class="text-sm font-bold text-text-secondary mb-3">키워드 알림</h3>
+			<p class="mb-3 text-[13px] text-text-secondary">
+				기사 하단의 키워드 옆 종을 누르면 그 주제로 새 이슈가 생겼을 때 알려드립니다.
+				한 이슈당 한 번만 알립니다.
+			</p>
+
+			<label class="mb-3 flex items-center gap-2 text-sm text-text">
+				<input
+					id="notify-keyword"
+					type="checkbox"
+					checked={notifyKeyword}
+					class="h-4 w-4 accent-brand"
+				/>
+				키워드 알림 받기
+				<span id="notify-keyword-status" class="text-xs text-text-secondary"></span>
+			</label>
+
+			{follows.keywords.length === 0 ? (
+				<p class="text-sm text-text-secondary">등록한 키워드가 없습니다.</p>
+			) : (
+				<div class="flex flex-wrap gap-2">
+					{follows.keywords.map((kw) => (
+						<span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface pl-3 pr-1.5 py-1 text-sm">
+							<a href={`/search?q=${encodeURIComponent(kw)}`} class="text-text hover:text-brand transition-colors">
+								#{kw}
+							</a>
+							<button
+								type="button"
+								data-unfollow
+								data-follow-type="keyword"
+								data-follow-value={kw}
+								aria-label={`${kw} 알림 해제`}
 								class="w-5 h-5 flex items-center justify-center rounded-full text-text-secondary hover:text-text hover:bg-surface-alt leading-none"
 							>
 								×
@@ -315,9 +366,39 @@ const { initial, color } = getInitialAvatar(user.id, user.nickname);
 		});
 	}
 
+	function setupNotifyKeywordToggle() {
+		const box = document.getElementById("notify-keyword") as HTMLInputElement | null;
+		const status = document.getElementById("notify-keyword-status");
+		if (!box || box.dataset.bound) return;
+		box.dataset.bound = "true";
+		box.addEventListener("change", async () => {
+			const on = box.checked;
+			box.disabled = true;
+			const res = await fetch("/api/me/profile", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ notifyKeyword: on }),
+			}).catch(() => null);
+			box.disabled = false;
+			if (!res?.ok) {
+				// 실패하면 체크 상태를 되돌린다 — 껐다고 생각했는데 계속 오는 게 최악이다.
+				box.checked = !on;
+				if (status) status.textContent = "저장하지 못했습니다";
+				return;
+			}
+			if (status) {
+				status.textContent = "저장됨";
+				window.setTimeout(() => {
+					if (status.textContent === "저장됨") status.textContent = "";
+				}, 2000);
+			}
+		});
+	}
+
 	document.addEventListener("astro:page-load", () => {
 		setupNicknameEdit();
 		setupUnfollowButtons();
+		setupNotifyKeywordToggle();
 		setupBookmarkButtons();
 	});
 </script>

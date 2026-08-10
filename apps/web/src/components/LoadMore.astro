@@ -34,6 +34,7 @@ const { hasMore, category, source, query, sort } = Astro.props;
 	import type { Article } from "@dansum/shared";
 	import { renderArticleCard } from "../lib/renderArticleCard";
 	import { setupBookmarkButtons } from "../lib/bookmarks";
+	import { setupCommentCounts } from "../lib/commentCounts";
 
 	const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
@@ -67,6 +68,8 @@ const { hasMore, category, source, query, sort } = Astro.props;
 					list.appendChild(cardEl);
 					setupBookmarkButtons(cardEl);
 				}
+				// 새로 붙인 카드의 댓글 수는 한 번에 물어본다(카드마다 요청하지 않는다)
+				setupCommentCounts(list);
 				page++;
 
 				if (data.hasMore) {

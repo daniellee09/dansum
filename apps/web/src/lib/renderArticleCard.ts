@@ -54,11 +54,16 @@ export function renderArticleCard(a: Article): HTMLElement {
 	cat.textContent = (CATEGORY_LABELS as Record<string, string>)[a.category] ?? a.category;
 	nameRow.append(src, cat);
 
+	const metaRow = document.createElement("div");
+	metaRow.className = "mt-1 flex items-center gap-x-2 text-[13px] text-text-secondary tabular-nums";
 	const time = document.createElement("time");
-	time.className = "mt-1 block text-[13px] text-text-secondary tabular-nums";
 	time.textContent = formatRelativeTime(a.publishedAt);
+	// 논의가 붙었을 때만 채워진다(lib/commentCounts.ts). ArticleCard.astro와 같은 자리·같은 규칙.
+	const commentCount = document.createElement("span");
+	commentCount.dataset.commentCountFor = a.id;
+	metaRow.append(time, commentCount);
 
-	headText.append(nameRow, time);
+	headText.append(nameRow, metaRow);
 	// 아바타도 매체 목록으로(이름 링크와 중복 탭 정지가 되지 않게 포커스 대상에서 제외)
 	const iconLink = document.createElement("a");
 	iconLink.href = `/source/${a.sourceId}`;

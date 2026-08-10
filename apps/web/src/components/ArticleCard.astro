@@ -42,9 +42,12 @@ const { article } = Astro.props;
 					{CATEGORY_LABELS[article.category as Category] ?? article.category}
 				</a>
 			</div>
-			<time class="mt-1 block text-[13px] text-text-secondary tabular-nums">
-				{formatRelativeTime(article.publishedAt)}
-			</time>
+			<div class="mt-1 flex items-center gap-x-2 text-[13px] text-text-secondary tabular-nums">
+				<time>{formatRelativeTime(article.publishedAt)}</time>
+				<!-- 논의가 붙었을 때만 채워진다(lib/commentCounts.ts). 0이면 빈 칸 그대로 —
+				     모든 카드에 "댓글 0"이 달리면 정보가 아니라 소음이다. -->
+				<span data-comment-count-for={article.id}></span>
+			</div>
 		</div>
 
 		<button

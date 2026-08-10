@@ -1,0 +1,88 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ArticleList from "../../components/ArticleList.astro";
+import SourceIcon from "../../components/SourceIcon.astro";
+import { formatRelativeTime } from "@dansum/shared";
+import { getIssue } from "../../lib/api";
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/");
+
+let issue: Awaited<ReturnType<typeof getIssue>> | null = null;
+try {
+	issue = await getIssue(id);
+} catch {
+	// 이슈가 없으면(멤버 0건) 404. 리다이렉트하면 "있었는데 옮겨졌다"로 읽힌다.
+	issue = null;
+}
+if (!issue) return new Response("Not found", { status: 404 });
+
+const { lead, articles, coverage, sourceNames } = issue;
+---
+
+<BaseLayout
+	title={`${lead.title} - 단숨`}
+	description={`${coverage}개 매체가 다룬 이슈 · ${lead.summary}`}
+>
+	<section>
+		<!-- 이슈 헤더: 무엇에 대한 논의인지 + 어느 매체들이 다뤘는지.
+		     기사 상세를 흉내 내지 않는다 — 여기서 읽을 것은 요약이 아니라 "이 사건의 판도"다. -->
+		<div class="mb-1 flex items-center gap-2 text-[13px] text-text-secondary">
+			<span class="rounded bg-surface-alt px-1.5 py-0.5 font-semibold text-text-secondary">이슈</span>
+			<span class="tabular-nums">{coverage}개 매체 · 기사 {articles.length}건</span>
+			<span>{formatRelativeTime(lead.publishedAt)}</span>
+		</div>
+		<h2 class="text-xl font-bold tracking-tight leading-snug">{lead.title}</h2>
+		{/* 요약을 여기 다시 쓰지 않는다 — 바로 아래 첫 카드가 같은 기사이고 같은 요약을 이미 보여준다.
+		    이 머리글이 답할 것은 "무슨 요약인가"가 아니라 "누가 이 사건을 다뤘는가"다. */}
+
+		<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+			{articles
+				.filter((a, i, arr) => arr.findIndex((x) => x.sourceId === a.sourceId) === i)
+				.map((a) => (
+					<a href={`/source/${a.sourceId}`} class="flex items-center gap-1.5 text-[13px] text-text-secondary hover:text-text transition-colors">
+						<SourceIcon sourceId={a.sourceId} sourceUrl={a.sourceUrl} sourceName={a.sourceName} size={18} />
+						{a.sourceName}
+					</a>
+				))}
+		</div>
+
+		<h3 class="mt-8 mb-1 text-sm font-bold text-text-secondary">
+			이 이슈를 다룬 기사 {articles.length}건
+		</h3>
+		<ArticleList articles={articles} />
+
+		<!-- 논의: 기사 페이지와 같은 스레드다(같은 issue_id). 여기서는 매체별 origin 라벨을
+		     붙이지 않는다 — 이슈 페이지에는 기준 기사가 없어서 전부에 라벨이 달릴 것이고,
+		     그러면 모두가 다는 배지가 된다. -->
+		<div
+			class="mt-10 pt-6 border-t border-border"
+			data-comments
+			data-issue-id={issue.id}
+			data-post-to={lead.id}
+		>
+			<h2 class="text-lg font-bold mb-1">
+				댓글 <span data-comment-count>0</span>
+			</h2>
+			<p class="mb-4 text-[13px] text-text-secondary">
+				{sourceNames.length > 1
+					? `${sourceNames.length}개 매체의 기사에 달린 의견이 한곳에 모입니다`
+					: "이 이슈에 달린 의견입니다"}
+			</p>
+			<div data-comment-form-wrap class="mb-6"></div>
+			<div data-comment-list></div>
+		</div>
+	</section>
+</BaseLayout>
+
+<script>
+	import { mountComments } from "../../lib/comments";
+
+	document.addEventListener("astro:page-load", () => {
+		const root = document.querySelector<HTMLElement>("[data-comments]");
+		const issueId = root?.dataset.issueId;
+		const postTo = root?.dataset.postTo;
+		// articleId를 넘기지 않는다 → origin 라벨이 렌더되지 않는다(위 주석 참고).
+		if (root && issueId && postTo) mountComments(root, { issueId, postTo });
+	});
+</script>

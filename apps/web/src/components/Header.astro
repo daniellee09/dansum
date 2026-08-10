@@ -104,6 +104,14 @@ const logoLetters = "dansum".split("");
 						</div>
 						<div class="my-1 border-t border-border"></div>
 						<div id="notif-list" class="max-h-80 overflow-y-auto"></div>
+						<!-- 드롭다운은 최근 20건만 담는다. 키워드 알림이 생기면서 그것만으론 부족해졌다. -->
+						<div class="my-1 border-t border-border"></div>
+						<a
+							href="/notifications"
+							class="block px-3.5 py-2 text-center text-xs text-text-secondary hover:text-brand transition-colors"
+						>
+							알림 모두 보기
+						</a>
 					</div>
 				</div>
 
@@ -224,20 +232,23 @@ const logoLetters = "dansum".split("");
 								로그인 / 회원가입
 							</a>
 						)}
-						<span
-							role="menuitem"
-							aria-disabled="true"
-							class="flex cursor-not-allowed items-center gap-3 px-3.5 py-2 text-sm text-text-secondary opacity-60"
-						>
-							<svg class="w-[18px] h-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h13" />
-								<circle cx="16" cy="6" r="2" />
-								<circle cx="8" cy="12" r="2" />
-								<circle cx="17" cy="18" r="2" />
-							</svg>
-							<span class="flex-1">설정</span>
-							<span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold">준비 중</span>
-						</span>
+					{/* 설정은 /mypage#settings 섹션이다. 별도 페이지를 만들면 인증·레이아웃·닉네임·
+						    팔로우를 두 벌 유지하게 된다. 로그아웃 상태에는 설정할 것이 없어 아예 숨긴다. */}
+						{user && (
+							<a
+								href="/mypage#settings"
+								role="menuitem"
+								class="flex items-center gap-3 px-3.5 py-2 text-sm text-text hover:bg-surface-alt transition-colors"
+							>
+								<svg class="w-[18px] h-[18px] shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h13" />
+									<circle cx="16" cy="6" r="2" />
+									<circle cx="8" cy="12" r="2" />
+									<circle cx="17" cy="18" r="2" />
+								</svg>
+								설정
+							</a>
+						)}
 					</div>
 				</div>
 

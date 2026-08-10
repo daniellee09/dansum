@@ -25,14 +25,12 @@ import { detectTone } from "./tone";
 import { getInitialAvatar } from "./userAvatar";
 
 const GUIDELINES = [
-	"사람이 아니라 주장을 비판해주세요",
-	"진영 라벨 대신 근거를 적어주세요",
-	// 사용자가 ▼를 찾는 바로 그 순간에 부재를 설명하면서, 반대를 '억압'이 아니라 '참여'로 재정의한다
-	"반대는 답글로 남겨주세요 — 비추천 버튼은 없앴습니다",
-	"나와 다른 의견도 한 번 읽고 답해주세요",
+	"서로 예의를 지키며 댓글을 남겨주세요",
+	// 스레드가 이슈 단위라 여러 매체의 기사가 한 곳에 모인다 — "기사"가 아니라 "주제"가 맞다.
+	"이 주제와 관련된 내용으로 작성해주세요",
 ];
 
-const REPLY_GUIDELINE = "답글도 사람이 아니라 주장을 향하게 해주세요";
+const REPLY_GUIDELINE = "예의를 지키며 주제와 관련된 답글을 남겨주세요";
 
 const NETWORK_ERROR = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요";
 
@@ -75,16 +73,35 @@ async function postJson<T = unknown>(
 	}
 }
 
-async function fetchComments(articleId: string, sort: CommentSort): Promise<CommentDTO[]> {
-	const res = await fetch(`/api/comments?articleId=${encodeURIComponent(articleId)}&sort=${sort}`);
+/**
+ * 스레드 범위. 기사 페이지는 기사에서 출발하고(서버가 이슈로 환원), 이슈 페이지는 이슈에서
+ * 출발한다. 어느 쪽이든 새 댓글은 `postTo` 기사에 기록된다 — 이슈에는 대표 기사가 있고,
+ * 이슈 페이지는 origin 라벨을 렌더하지 않으므로 그 선택이 화면에 주장으로 드러나지 않는다.
+ */
+export interface CommentScope {
+	articleId?: string;
+	issueId?: string;
+	/** 새 댓글을 어느 기사에 기록할지(= createComposer의 articleId) */
+	postTo: string;
+}
+
+async function fetchComments(scope: CommentScope, sort: CommentSort): Promise<CommentDTO[]> {
+	const key = scope.issueId
+		? `issueId=${encodeURIComponent(scope.issueId)}`
+		: `articleId=${encodeURIComponent(scope.articleId ?? "")}`;
+	const res = await fetch(`/api/comments?${key}&sort=${sort}`);
 	if (!res.ok) return [];
 	const data = (await res.json()) as { comments?: CommentDTO[] };
 	return Array.isArray(data.comments) ? data.comments : [];
 }
 
+/** 헤더의 "댓글 N". 가려진 댓글은 빼서 카드의 숫자(counts 엔드포인트)와 뜻이 어긋나지 않게 한다. */
 function countAll(comments: CommentDTO[]): number {
 	let n = 0;
-	for (const c of comments) n += 1 + c.replies.length;
+	for (const c of comments) {
+		if (!c.isHidden) n += 1;
+		n += c.replies.filter((r) => !r.isHidden).length;
+	}
 	return n;
 }
 
@@ -112,10 +129,7 @@ function createComposer(opts: {
 		"rounded-t-md border border-border border-b-0 bg-brand/5 px-3 py-2.5 dark:bg-brand/10",
 	);
 	if (isRoot) {
-		notice.appendChild(
-			el("p", "text-[13px] font-bold text-brand", "서로 다른 의견이 오가는 자리입니다"),
-		);
-		const list = el("ul", "mt-1 space-y-0.5 text-[13px] leading-relaxed text-text-secondary");
+		const list = el("ul", "space-y-0.5 text-[13px] leading-relaxed text-text-secondary");
 		for (const line of GUIDELINES) list.appendChild(el("li", undefined, `· ${line}`));
 		notice.appendChild(list);
 	} else {
@@ -307,13 +321,15 @@ function renderReportPanel(commentId: string, onReported: () => void): HTMLEleme
 
 function renderComment(
 	c: CommentDTO,
-	articleId: string,
+	scope: CommentScope,
 	depth: number,
 	refresh: () => void,
 ): HTMLElement {
 	const avatar = getInitialAvatar(c.author.id, c.author.nickname);
 	const wrap = el("div", "flex gap-3 py-4");
 	wrap.dataset.commentId = c.id;
+	// 퍼머링크 대상. 답글 알림이 /article/<id>#comment-<id>로 오면 focusHashComment가 여기로 스크롤한다.
+	wrap.id = `comment-${c.id}`;
 
 	const avatarEl = el(
 		"span",
@@ -335,6 +351,15 @@ function renderComment(
 		head.appendChild(el("span", "text-[11px] font-semibold text-brand", `Lv.${level} ${grade.label}`));
 	}
 	head.appendChild(el("span", "text-text-secondary text-xs", formatRelativeTime(c.createdAt)));
+
+	// 스레드는 이슈 단위라 여러 매체의 기사에서 온 댓글이 섞인다. 출처를 밝히되,
+	// **지금 보고 있는 기사와 다를 때만** 붙인다 — 5개 매체 스레드에서 전부에 라벨이 달리면
+	// 그건 모두가 다는 배지고, 정보가 아니라 소음이다. 이슈 페이지에서는 기준 기사가
+	// 없으므로(scope.articleId가 비어 있다) 아예 붙지 않는다.
+	// 기사 제목이 아니라 매체명만 쓴다(제목은 길고, 알고 싶은 건 "어느 매체에서"다).
+	if (scope.articleId && c.origin && c.origin.articleId !== scope.articleId) {
+		head.appendChild(el("span", "text-text-secondary text-xs", `${c.origin.sourceName}에서`));
+	}
 	body.appendChild(head);
 
 	// 가려진 댓글은 접어두되 지우지는 않는다 — 오탐일 수 있으니 직접 확인할 길은 남긴다.
@@ -359,7 +384,7 @@ function renderComment(
 			// 가려진 글의 답글은 잘못한 게 없는 다른 사람들의 글이라 그대로 보여준다
 			const repliesWrap = el("div", "mt-2 pl-4 border-l border-border divide-y divide-border");
 			for (const reply of c.replies) {
-				repliesWrap.appendChild(renderComment(reply, articleId, depth + 1, refresh));
+				repliesWrap.appendChild(renderComment(reply, scope, depth + 1, refresh));
 			}
 			body.appendChild(repliesWrap);
 		}
@@ -463,7 +488,7 @@ function renderComment(
 
 	if (depth === 0 && c.status !== "deleted") {
 		replyForm = createComposer({
-			articleId,
+			articleId: scope.postTo,
 			parentCommentId: c.id,
 			variant: "reply",
 			onPosted: refresh,
@@ -475,7 +500,7 @@ function renderComment(
 	if (c.replies.length > 0) {
 		const repliesWrap = el("div", "mt-2 pl-4 border-l border-border divide-y divide-border");
 		for (const reply of c.replies) {
-			repliesWrap.appendChild(renderComment(reply, articleId, depth + 1, refresh));
+			repliesWrap.appendChild(renderComment(reply, scope, depth + 1, refresh));
 		}
 		body.appendChild(repliesWrap);
 	}
@@ -485,7 +510,7 @@ function renderComment(
 
 // ── 마운트 ────────────────────────────────────────────────────
 
-export async function mountComments(container: HTMLElement, articleId: string): Promise<void> {
+export async function mountComments(container: HTMLElement, scope: CommentScope): Promise<void> {
 	const countEl = container.querySelector<HTMLElement>("[data-comment-count]");
 	const listEl = container.querySelector<HTMLElement>("[data-comment-list]");
 	const formWrap = container.querySelector<HTMLElement>("[data-comment-form-wrap]");
@@ -494,7 +519,7 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 	let sort: CommentSort = DEFAULT_COMMENT_SORT;
 
 	const refresh = async () => {
-		const comments = await fetchComments(articleId, sort);
+		const comments = await fetchComments(scope, sort);
 		if (countEl) countEl.textContent = String(countAll(comments));
 		listEl.innerHTML = "";
 		if (comments.length === 0) {
@@ -515,13 +540,16 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 			return;
 		}
 		const wrap = el("div", "divide-y divide-border");
-		for (const c of comments) wrap.appendChild(renderComment(c, articleId, 0, refresh));
+		for (const c of comments) wrap.appendChild(renderComment(c, scope, 0, refresh));
 		listEl.appendChild(wrap);
 	};
 
 	// 정렬 탭(기본 화제순). SortTabs.astro와 같은 밑줄 탭 시각 언어를 쓰되, 여기는
 	// 페이지 이동 없이 JS로 다시 불러오는 위젯이라 <a href> 대신 버튼으로 구현한다.
 	const sortBar = el("div", "mb-3 flex items-center gap-4 text-sm");
+	// 스모크 테스트가 이 바를 형제 위치(preceding-sibling)로 찾다가 주변에 무엇이 하나만 끼어도
+	// 깨졌다. 위치가 아니라 이름으로 찾게 한다.
+	sortBar.dataset.commentSort = "";
 	const tabButtons = COMMENT_SORTS.map((tab) => {
 		const btn = el("button", undefined, tab.label);
 		btn.type = "button";
@@ -549,7 +577,7 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 		formWrap.innerHTML = "";
 		if (isLoggedIn()) {
 			formWrap.appendChild(
-				createComposer({ articleId, parentCommentId: null, variant: "root", onPosted: refresh }),
+				createComposer({ articleId: scope.postTo, parentCommentId: null, variant: "root", onPosted: refresh }),
 			);
 		} else {
 			// 비로그인에게도 규범을 먼저 보여준다 — 참여를 결정하기 전에 보여야 의미가 있다.
@@ -557,10 +585,7 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 				"div",
 				"rounded-md border border-border bg-brand/5 px-3 py-2.5 dark:bg-brand/10",
 			);
-			notice.appendChild(
-				el("p", "text-[13px] font-bold text-brand", "서로 다른 의견이 오가는 자리입니다"),
-			);
-			const list = el("ul", "mt-1 space-y-0.5 text-[13px] leading-relaxed text-text-secondary");
+			const list = el("ul", "space-y-0.5 text-[13px] leading-relaxed text-text-secondary");
 			for (const line of GUIDELINES) list.appendChild(el("li", undefined, `· ${line}`));
 			notice.appendChild(list);
 
@@ -574,4 +599,20 @@ export async function mountComments(container: HTMLElement, articleId: string): 
 	}
 
 	await refresh();
+	focusHashComment();
+}
+
+/** /article/<id>#comment-<id> 로 들어왔을 때 해당 댓글로 스크롤하고 잠깐 표시해준다.
+ *  댓글 목록은 마운트 후 JS로 그려지므로 브라우저의 기본 해시 점프는 이미 지나간 뒤다. */
+function focusHashComment(): void {
+	if (!location.hash.startsWith("#comment-")) return;
+	const target = document.getElementById(location.hash.slice(1));
+	if (!target) return;
+	target.scrollIntoView({ block: "center" });
+	// 색을 칠하는 대신 왼쪽 선만 잠깐 준다 — "어느 것인지"만 알려주면 되고,
+	// 배경을 칠하면 가려진 댓글·삭제된 댓글의 기존 표시와 신호가 겹친다.
+	target.classList.add("border-l-2", "border-brand", "pl-3", "-ml-3");
+	setTimeout(() => {
+		target.classList.remove("border-l-2", "border-brand", "pl-3", "-ml-3");
+	}, 2500);
 }

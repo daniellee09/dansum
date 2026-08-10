@@ -213,12 +213,16 @@ const authStateJson = JSON.stringify(authUser).replace(/</g, "\\u003c");
 			// ArticleCard·기사 상세·매체/카테고리 헤더 어디든 data-* 속성만 있으면 자동 바인딩된다.
 			// LoadMore가 그려내는 카드는 새로 생기는 DOM이라 자체 스크립트에서 별도로 호출한다.
 			import { setupBookmarkButtons } from "../lib/bookmarks";
-			import { setupFollowButtons } from "../lib/follows";
+			import { setupFollowButtons, setupKeywordAlertButtons } from "../lib/follows";
+			import { setupCommentCounts } from "../lib/commentCounts";
 			import { runPostLoginMigrationIfFlagged } from "../lib/migrateLocal";
 
 			document.addEventListener("astro:page-load", () => {
 				setupBookmarkButtons();
 				setupFollowButtons();
+				setupKeywordAlertButtons();
+				// 카드의 "댓글 N"(논의가 붙은 것만). 서버 렌더에 넣지 않는 이유는 lib/commentCounts.ts 참고.
+				setupCommentCounts();
 				// 소셜 로그인 직후 도착한 페이지라면 익명 localStorage 데이터를 계정으로 옮긴다
 				runPostLoginMigrationIfFlagged();
 			});

@@ -24,6 +24,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 	import { getArticles } from "../lib/api";
 	import { renderArticleCard } from "../lib/renderArticleCard";
 	import { setupBookmarkButtons } from "../lib/bookmarks";
+	import { setupCommentCounts } from "../lib/commentCounts";
 
 	async function loadFeed() {
 		const list = document.getElementById("feed-list");
@@ -65,6 +66,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 		for (const a of merged) list.appendChild(renderArticleCard(a));
 		setupBookmarkButtons(list);
+		setupCommentCounts(list);
 	}
 
 	document.addEventListener("astro:page-load", loadFeed);
