@@ -2,7 +2,16 @@ import { MAX_RETRY_COUNT, hashUrl } from "@dansum/shared";
 // 요약 로직은 summarizer 워커에서 재사용(중복 제거). esbuild가 번들 시 함께 묶는다.
 import { summarizeArticle } from "../../summarizer/src/claude/client.js";
 // 본문 추출은 무료 플랜 CPU 한도 때문에 readability 대신 경량(정규식) 추출기 사용.
+import {
+	assignIssues,
+	buildIssueInsertStatements,
+	buildIssueRecomputeStatements,
+	drainUnassignedIssues,
+	loadOpenIssues,
+	type IssueCandidate,
+} from "./issues.js";
 import { extractArticleLight, extractImageLight } from "./light-extract.js";
+import { type NewIssueAlert, notifyKeywordFollowers } from "./notify-keywords.js";
 import { parseRssFeed } from "./parsers/rss-parser.js";
 import { NEWS_SOURCES } from "./sources/config.js";
 
@@ -62,10 +71,20 @@ async function runPipeline(env: Env): Promise<void> {
 	]);
 	await collectNews(env);
 	await fetchPending(env);
-	const completed = await summarizeFetched(env);
+
+	// 흡수 창 안의 이슈 후보를 tick당 한 번만 읽어 요약·드레인이 함께 쓴다(조회 1회로 절약).
+	// assignIssues가 이 배열을 제자리에서 늘리므로, 요약 단계에서 새로 만든 이슈에
+	// 드레인 단계의 옛 기사가 그대로 붙을 수 있다.
+	const openIssues = await loadOpenIssues(env.DB);
+
+	const completed = await summarizeFetched(env, openIssues);
+	// 아직 이슈가 없는 기사(마이그레이션 직후의 기존 기사, 배정이 빠진 기사)를 조금씩 채운다.
+	const drained = await drainUnassignedIssues(env.DB, openIssues);
+
 	// 새 완료분이 있으면 홈 캐시(주요뉴스·최신피드)를 비워 다음 요청에서 즉시 갱신.
-	if (completed > 0) await invalidateFeedCache(env);
-	console.log(`[Pipeline] done (completed: ${completed})`);
+	// 드레인만 돈 경우에도 비운다 — 이슈 배정이 곧 홈의 묶음이 바뀌는 것이라서다.
+	if (completed > 0 || drained > 0) await invalidateFeedCache(env);
+	console.log(`[Pipeline] done (completed: ${completed}, issues drained: ${drained})`);
 }
 
 // 홈이 호출하는 핵심 피드 캐시만 무효화(서브리퀘스트 절약 위해 2키만; 카테고리는 TTL로 자연 갱신).
@@ -265,7 +284,7 @@ interface FetchedRow {
 	imageUrl: string | null;
 }
 
-async function summarizeFetched(env: Env): Promise<number> {
+async function summarizeFetched(env: Env, openIssues: IssueCandidate[]): Promise<number> {
 	// 요약에 필요한 필드를 한 번에 조회(건별 SELECT 제거 → 서브리퀘스트 절약)
 	const res = await env.DB.prepare(
 		`SELECT r.id AS rawArticleId, r.source_id AS sourceId, s.name AS sourceName,
@@ -308,44 +327,86 @@ async function summarizeFetched(env: Env): Promise<number> {
 		),
 	);
 
-	// 성공: articles INSERT + completed / 실패: fetched 복귀 — 모두 한 번의 배치로 기록
-	const writeStmts: D1PreparedStatement[] = [];
+	// 이슈 배정을 먼저 정한다. 키워드는 방금 받은 요약 결과에 이미 들어 있으므로
+	// 기사별 추가 조회 없이 결정된다(여기서 건별 SELECT를 도는 건 이 파일에서 금물).
+	// articles.id를 INSERT 시점이 아니라 여기서 미리 뽑는 이유도 같다 — 배정과 INSERT가
+	// 같은 id를 가리켜야 한다.
+	const articleIds = toProcess.map(() => crypto.randomUUID());
+	const assignments = assignIssues(
+		openIssues,
+		results.flatMap((out, i) =>
+			out.status === "fulfilled"
+				? [{ articleId: articleIds[i], keywords: out.value.keywords, publishedAt: toProcess[i].publishedAt }]
+				: [],
+		),
+	);
+	const issueByArticle = new Map(assignments.map((a) => [a.articleId, a.issueId]));
+
+	// 한 배치 안에서 순서가 곧 제약 조건이다(D1 batch는 순서를 보장하고 원자적으로 실행된다):
+	//   ① 신규 이슈 INSERT → ② 기사 INSERT(FK가 ①을 필요로 함) → ③ 이슈 집계 재계산(②를 읽음)
+	// 여기서 50개씩 쪼개면 이 순서가 깨지므로 collectNews와 달리 청크로 나누지 않는다.
+	const writeStmts: D1PreparedStatement[] = buildIssueInsertStatements(env.DB, assignments);
+
 	results.forEach((out, i) => {
 		const r = toProcess[i];
-		if (out.status === "fulfilled") {
-			const s = out.value;
-			writeStmts.push(
-				env.DB.prepare(
-					// image_url은 RSS 수집 때 raw_articles에 담긴 값을 그대로 옮긴다
-					// (이 복사가 빠져 있어 대표 이미지가 계속 비어 있었다).
-					`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at, image_url)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?)`,
-				).bind(
-					crypto.randomUUID(),
-					r.rawArticleId,
-					r.sourceId,
-					s.title,
-					r.title,
-					s.summary,
-					JSON.stringify(s.sections),
-					JSON.stringify(s.key_points),
-					s.category,
-					JSON.stringify(s.keywords),
-					r.url,
-					r.sourceName,
-					r.publishedAt,
-					r.imageUrl,
-				),
-				env.DB.prepare("UPDATE raw_articles SET status = 'completed' WHERE id = ?").bind(r.rawArticleId),
-			);
-			console.log(`[Summarize] ${s.title}`);
-		} else {
+		if (out.status !== "fulfilled") {
 			console.error(`[Summarize] ${r.rawArticleId} 실패:`, out.reason);
 			writeStmts.push(
 				env.DB.prepare("UPDATE raw_articles SET status = 'fetched' WHERE id = ?").bind(r.rawArticleId),
 			);
+			return;
 		}
+		const s = out.value;
+		const articleId = articleIds[i];
+		writeStmts.push(
+			env.DB.prepare(
+				// image_url은 RSS 수집 때 raw_articles에 담긴 값을 그대로 옮긴다
+				// (이 복사가 빠져 있어 대표 이미지가 계속 비어 있었다).
+				`INSERT INTO articles (id, raw_article_id, source_id, title, original_title, summary, sections, key_points, category, keywords, source_url, source_name, published_at, image_url, issue_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?)`,
+			).bind(
+				articleId,
+				r.rawArticleId,
+				r.sourceId,
+				s.title,
+				r.title,
+				s.summary,
+				JSON.stringify(s.sections),
+				JSON.stringify(s.key_points),
+				s.category,
+				JSON.stringify(s.keywords),
+				r.url,
+				r.sourceName,
+				r.publishedAt,
+				r.imageUrl,
+				issueByArticle.get(articleId) ?? null,
+			),
+			env.DB.prepare("UPDATE raw_articles SET status = 'completed' WHERE id = ?").bind(r.rawArticleId),
+		);
+		console.log(`[Summarize] ${s.title}`);
 	});
+
+	writeStmts.push(...buildIssueRecomputeStatements(env.DB, assignments));
+
 	if (writeStmts.length > 0) await env.DB.batch(writeStmts);
-	return results.filter((r) => r.status === "fulfilled").length;
+
+	// 기사 배치가 커밋된 **뒤에**, 별도 배치로 키워드 알림을 만든다. 이번 tick에 새로
+	// 창설된 이슈만 대상이라 같은 사건에 알림이 두 번 가지 않는다(notify-keywords.ts 주석 참고).
+	const newIssueAlerts: NewIssueAlert[] = [];
+	for (const a of assignments) {
+		if (!a.createdWith) continue;
+		const i = articleIds.indexOf(a.articleId);
+		const out = i >= 0 ? results[i] : undefined;
+		if (!out || out.status !== "fulfilled") continue;
+		newIssueAlerts.push({
+			issueId: a.issueId,
+			articleId: a.articleId,
+			articleTitle: out.value.title,
+			keywords: out.value.keywords,
+		});
+	}
+	const alerts = await notifyKeywordFollowers(env.DB, newIssueAlerts);
+	if (alerts > 0) console.log(`[KeywordAlert] ${alerts}건 발송`);
+
+	return assignments.length;
 }
