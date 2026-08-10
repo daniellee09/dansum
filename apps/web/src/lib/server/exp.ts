@@ -130,6 +130,44 @@ export async function awardAttendance(db: D1Database, userId: string): Promise<b
 	return true;
 }
 
+/**
+ * 연속 방문일. exp_events의 attendance 행은 부분 UNIQUE 인덱스가 하루 한 건을 보장하므로
+ * 날짜만 최신순으로 훑어 끊기는 지점까지 세면 된다.
+ *
+ * 오늘 아직 안 들어온 상태에서 어제까지 이어져 있으면 그 연속은 살아있는 것으로 본다
+ * (0시를 넘겼다는 이유로 어제까지의 기록이 0으로 보이면 안 된다). 그제부터 비면 끊긴 것이다.
+ * 60일이면 화면에 쓰기 충분하고, 더 길게 읽어봐야 보여줄 데가 없다.
+ */
+export async function getAttendanceStreak(db: D1Database, userId: string): Promise<number> {
+	const { results } = await db
+		.prepare(
+			`SELECT date(created_at) AS d FROM exp_events
+			 WHERE user_id = ? AND reason = 'attendance'
+			 ORDER BY d DESC LIMIT 60`,
+		)
+		.bind(userId)
+		.all<{ d: string }>();
+	if (results.length === 0) return 0;
+
+	const DAY_MS = 86_400_000;
+	const todayMs = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+	const firstMs = Date.parse(`${results[0].d}T00:00:00Z`);
+
+	// 가장 최근 출석이 어제보다 이전이면 이미 끊겼다.
+	const gapDays = Math.round((todayMs - firstMs) / DAY_MS);
+	if (gapDays > 1) return 0;
+
+	let streak = 1;
+	let prevMs = firstMs;
+	for (let i = 1; i < results.length; i++) {
+		const ms = Date.parse(`${results[i].d}T00:00:00Z`);
+		if (Math.round((prevMs - ms) / DAY_MS) !== 1) break;
+		streak++;
+		prevMs = ms;
+	}
+	return streak;
+}
+
 export async function getUserBadges(db: D1Database, userId: string): Promise<BadgeDTO[]> {
 	const { results } = await db
 		.prepare(
@@ -154,6 +192,8 @@ export async function getUserBadges(db: D1Database, userId: string): Promise<Bad
 	}));
 }
 
+/** 참조하는 화면이 없다(랭킹 페이지는 삭제했다). 운영 중 "상위 활동 계정이 누구인지"를
+ *  D1 콘솔 대신 코드로 확인할 일이 남아 있어 쿼리만 남겨둔다 — 다시 노출 화면을 만들 근거는 아니다. */
 export async function getRanking(db: D1Database, limit = 50): Promise<RankingEntry[]> {
 	const { results } = await db
 		.prepare(

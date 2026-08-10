@@ -100,6 +100,18 @@ export async function updateNickname(
 	return { ok: true };
 }
 
+/** 매체 한 곳의 표시 정보. /source/[id]는 기사 목록이 비면 매체명을 알 길이 없어
+ *  raw id("yonhap-economy")를 그대로 제목에 노출하고 있었다. sources가 정본이다. */
+export async function getSource(
+	db: D1Database,
+	id: string,
+): Promise<{ id: string; name: string; url: string } | null> {
+	return await db
+		.prepare("SELECT id, name, url FROM sources WHERE id = ?")
+		.bind(id)
+		.first<{ id: string; name: string; url: string }>();
+}
+
 export async function getSourceNames(
 	db: D1Database,
 	ids: string[],
@@ -318,27 +330,61 @@ export async function removeBookmark(db: D1Database, userId: string, articleId: 
 
 // ── 팔로우 ────────────────────────────────────────────────────
 
+/** 팔로우 대상. keyword는 0012에서 추가됐지만 스키마 변경은 없었다 —
+ *  follows.target_type은 CHECK 없는 자유 텍스트이고 PK가 이미 복합키다. */
+export type FollowType = "source" | "category" | "keyword";
+
 export async function listFollows(
 	db: D1Database,
 	userId: string,
-): Promise<{ sources: string[]; categories: string[] }> {
+): Promise<{ sources: string[]; categories: string[]; keywords: string[] }> {
 	const { results } = await db
 		.prepare("SELECT target_type, target_value FROM follows WHERE user_id = ?")
 		.bind(userId)
 		.all<{ target_type: string; target_value: string }>();
 	const sources: string[] = [];
 	const categories: string[] = [];
+	const keywords: string[] = [];
 	for (const r of results) {
 		if (r.target_type === "source") sources.push(r.target_value);
 		else if (r.target_type === "category") categories.push(r.target_value);
+		else if (r.target_type === "keyword") keywords.push(r.target_value);
 	}
-	return { sources, categories };
+	return { sources, categories, keywords };
+}
+
+/** 유저가 팔로우 중인 키워드 개수(상한 검사용). */
+export async function countKeywordFollows(db: D1Database, userId: string): Promise<number> {
+	const row = await db
+		.prepare("SELECT COUNT(*) AS n FROM follows WHERE user_id = ? AND target_type = 'keyword'")
+		.bind(userId)
+		.first<{ n: number }>();
+	return row?.n ?? 0;
+}
+
+export async function getNotifyKeyword(db: D1Database, userId: string): Promise<boolean> {
+	const row = await db
+		.prepare("SELECT notify_keyword FROM users WHERE id = ?")
+		.bind(userId)
+		.first<{ notify_keyword: number }>();
+	return (row?.notify_keyword ?? 1) === 1;
+}
+
+export async function setNotifyKeyword(
+	db: D1Database,
+	userId: string,
+	on: boolean,
+): Promise<void> {
+	await db
+		.prepare("UPDATE users SET notify_keyword = ?, updated_at = datetime('now') WHERE id = ?")
+		.bind(on ? 1 : 0, userId)
+		.run();
 }
 
 export async function addFollow(
 	db: D1Database,
 	userId: string,
-	type: "source" | "category",
+	type: FollowType,
 	value: string,
 ): Promise<void> {
 	await db
@@ -352,7 +398,7 @@ export async function addFollow(
 export async function removeFollow(
 	db: D1Database,
 	userId: string,
-	type: "source" | "category",
+	type: FollowType,
 	value: string,
 ): Promise<void> {
 	await db

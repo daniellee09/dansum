@@ -5,6 +5,7 @@ import LoadMore from "../../components/LoadMore.astro";
 import SortTabs from "../../components/SortTabs.astro";
 import SourceIcon from "../../components/SourceIcon.astro";
 import { getArticles } from "../../lib/api";
+import { getSource } from "../../lib/server/db";
 
 const { id } = Astro.params;
 
@@ -15,15 +16,20 @@ const sort = Astro.url.searchParams.get("sort") === "hot" ? "hot" : "latest";
 let articles: Awaited<ReturnType<typeof getArticles>> | null = null;
 let error: string | null = null;
 
+const sourcePromise = getSource(Astro.locals.runtime.env.DB, id);
 try {
 	articles = await getArticles({ source: id, sort });
 } catch (e) {
 	error = e instanceof Error ? e.message : "Failed to load articles";
 }
+const source = await sourcePromise;
 
-// 매체 표시 정보는 별도 API 없이 첫 기사에서 가져온다(결과가 없으면 id를 그대로 보여준다)
+// 매체명은 sources 테이블이 정본이다(목록이 비어도 제목이 raw id로 떨어지지 않는다).
+// 아이콘 도메인만은 기사의 원문 URL을 우선한다 — sources.url은 RSS 피드 주소라
+// 호스트가 rss.* 서브도메인인 경우가 있어 파비콘이 덜 잡힌다.
 const lead = articles?.items[0];
-const sourceName = lead?.sourceName ?? id;
+const sourceName = source?.name ?? lead?.sourceName ?? id;
+const sourceUrl = lead?.sourceUrl ?? source?.url ?? "";
 ---
 
 <BaseLayout
@@ -33,14 +39,7 @@ const sourceName = lead?.sourceName ?? id;
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-2.5">
 			<div class="flex items-center gap-2.5 min-w-0">
-				{lead && (
-					<SourceIcon
-						sourceId={lead.sourceId}
-						sourceUrl={lead.sourceUrl}
-						sourceName={lead.sourceName}
-						size={28}
-					/>
-				)}
+				<SourceIcon sourceId={id} sourceUrl={sourceUrl} sourceName={sourceName} size={28} />
 				<div class="min-w-0">
 					<h2 class="text-lg font-bold tracking-tight leading-tight">{sourceName}</h2>
 					{articles && (
