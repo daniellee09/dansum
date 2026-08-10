@@ -8,9 +8,19 @@ export interface CommentAuthor {
 	exp: number;
 }
 
+/** 이 댓글이 "어느 기사에서" 쓰였는지. 스레드는 이슈 단위라 한 스레드에 여러 매체의 기사가 섞인다. */
+export interface CommentOrigin {
+	articleId: string;
+	sourceName: string;
+}
+
 export interface CommentDTO {
 	id: string;
+	/** 작성된 기사. 스레드의 소속이 아니라 출처다(소속은 issueId). */
 	articleId: string;
+	/** 스레드의 단위. 기사가 아직 이슈에 배정되지 않았으면 null(기사 단위로 폴백). */
+	issueId: string | null;
+	origin: CommentOrigin | null;
 	author: CommentAuthor;
 	parentCommentId: string | null;
 	body: string;

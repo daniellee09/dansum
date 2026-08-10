@@ -76,10 +76,22 @@ export const REPORT_REASONS: ReadonlyArray<{ key: ReportReason; label: string }>
 	{ key: "insult", label: "인신공격·모욕" },
 	{ key: "hate", label: "혐오·차별 표현" },
 	{ key: "spam", label: "도배·광고" },
-	{ key: "offtopic", label: "기사와 무관" },
+	// 스레드가 기사 단위에서 이슈 단위로 바뀌어(0011) 한 스레드에 여러 매체의 기사가 섞인다.
+	// "기사와 무관"은 이제 "내가 보고 있는 기사와 무관"으로 잘못 읽힌다.
+	{ key: "offtopic", label: "주제와 무관" },
 	{ key: "etc", label: "기타" },
 ];
 
 export function isReportReason(value: unknown): value is ReportReason {
 	return REPORT_REASONS.some((r) => r.key === value);
 }
+
+// ── 키워드 알림 ────────────────────────────────────────────────
+/** 한 사람이 팔로우할 수 있는 키워드 수. 알림은 많을수록 덜 읽히므로 넉넉함보다 적당함이 낫다. */
+export const KEYWORD_ALERT_MAX_FOLLOWS = 20;
+/** 한 사람이 파이프라인 한 번(30분)에 받을 수 있는 키워드 알림 수 상한.
+ *  큰 사건이 터지면 한 tick에 관련 이슈가 여럿 생기는데, 그때 종이 20개 울리면 안 된다. */
+export const KEYWORD_ALERTS_PER_RUN = 3;
+/** 너무 짧은 키워드는 아무 데나 걸린다(부분 문자열 매칭이라 더 그렇다). */
+export const KEYWORD_MIN_LENGTH = 2;
+export const KEYWORD_MAX_LENGTH = 20;

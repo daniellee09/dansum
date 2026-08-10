@@ -11,6 +11,14 @@ export {
 } from "./level.js";
 export type { Grade, LevelProgress } from "./level.js";
 export { normalizeSections } from "./sections.js";
+export {
+	normalizeKeyword,
+	sharedCount,
+	toKeywordSet,
+	MIN_SHARED_KEYWORDS,
+	ISSUE_MATCH_KEYWORD_MAX,
+	ISSUE_ABSORB_WINDOW_HOURS,
+} from "./cluster.js";
 export { formatKoreanDate, formatRelativeTime, toISOString } from "./date.js";
 export {
 	CATEGORY_LABELS,
@@ -28,4 +36,8 @@ export {
 	isReportReason,
 	EXP_REWARDS,
 	EXP_DAILY_COMMENT_LIMIT,
+	KEYWORD_ALERT_MAX_FOLLOWS,
+	KEYWORD_ALERTS_PER_RUN,
+	KEYWORD_MIN_LENGTH,
+	KEYWORD_MAX_LENGTH,
 } from "./constants.js";

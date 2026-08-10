@@ -66,12 +66,19 @@ export interface Article {
 	publishedAt: string;
 	summarizedAt: string;
 	createdAt: string;
+	/**
+	 * 이 기사가 속한 이슈(같은 사건을 다룬 기사들의 영구 묶음). 수집 시점에 정해지며 바뀌지 않는다.
+	 * 아직 배정되지 않은 기사(컬렉터 드레인 대기)는 null이다 — 읽기 쪽은 이 경우를 단독 이슈로 다룬다.
+	 */
+	issueId: string | null;
 }
 
 /** 같은 사건을 여러 매체가 보도한 묶음(보도량 기반 "오늘의 주요 뉴스") */
 export interface NewsCluster {
 	/** 대표 기사(클러스터 내 최신) */
 	lead: Article;
+	/** 이슈 페이지(/issue/[id]) 링크용. 아직 배정 전인 기사만 모인 묶음이면 null */
+	issueId: string | null;
 	/** 보도 매체 수(distinct source) = 화제성 지표 */
 	coverage: number;
 	/** 보도 매체 이름 목록 */
