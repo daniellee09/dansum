@@ -51,17 +51,24 @@ export const COMMON_KEYWORD_MIN_COUNT = 5;
 export const COMMON_KEYWORD_BATCH_RATIO = 0.03;
 
 /**
- * 배치 안에서 '흔한 말'의 집합을 만든다. 임계값에 못 미치는 배치(예: cron의 10건)에서는
- * 사실상 아무것도 걸리지 않는데, 그래도 된다 — 작은 배치는 애초에 블롭을 만들지 않는다.
+ * '흔한 말'의 집합을 만든다.
+ *
+ * 표본(samples)에는 배치의 기사 키워드와 열린 이슈의 매칭 키워드를 함께 넣지만, 임계값은
+ * **기사 수(thresholdBase)로만** 정한다. 둘을 합친 크기로 비율을 잡으면 열린 이슈가 400개
+ * 딸려오는 순간 임계값이 6 → 18로 뛰어 필터가 사실상 꺼진다(운영에서 실제로 그랬다:
+ * 최대 이슈가 43건까지 커졌다).
+ *
+ * 임계값에 못 미치는 작은 배치(cron의 10건)에서는 거의 아무것도 걸리지 않는데, 그래도 된다
+ * — 작은 배치는 애초에 블롭을 만들지 않는다.
  */
-export function findCommonKeywords(keywordSets: Set<string>[]): Set<string> {
+export function findCommonKeywords(samples: Set<string>[], thresholdBase: number): Set<string> {
 	const df = new Map<string, number>();
-	for (const set of keywordSets) {
+	for (const set of samples) {
 		for (const k of set) df.set(k, (df.get(k) ?? 0) + 1);
 	}
 	const threshold = Math.max(
 		COMMON_KEYWORD_MIN_COUNT,
-		Math.ceil(keywordSets.length * COMMON_KEYWORD_BATCH_RATIO),
+		Math.ceil(thresholdBase * COMMON_KEYWORD_BATCH_RATIO),
 	);
 	const common = new Set<string>();
 	for (const [k, n] of df) {

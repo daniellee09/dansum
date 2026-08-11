@@ -85,7 +85,10 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 	// 상투어 판정. 이 배치의 기사들에서 직접 센다 — 이슈 수로 세면 상투어가 여러 이슈로
 	// 퍼지지 않고 한 이슈에 몰려버려 임계값에 닿지 않는다(운영에서 실제로 그래서 안 먹었다).
 	// 열린 이슈의 매칭 집합도 표본에 넣어, 배치가 작을 때 최근 맥락이 반영되게 한다.
-	const common = findCommonKeywords([...keywordSets, ...open.map((c) => c.matchKeywords)]);
+	const common = findCommonKeywords(
+		[...keywordSets, ...open.map((c) => c.matchKeywords)],
+		keywordSets.length,
+	);
 
 	const assignments: IssueAssignment[] = [];
 	ordered.forEach((article, i) => {
