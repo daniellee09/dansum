@@ -32,6 +32,18 @@ export const ARTICLE_CACHE_TTL = 86400; // 1일
 
 export const COMMENT_MAX_LENGTH = 1000;
 
+/**
+ * 답글을 몇 단까지 허용할지. 최상위 댓글이 0단이므로 20단이면 한 갈래에 21개까지 이어진다.
+ *
+ * 상한을 두는 건 대화를 끊으려는 게 아니라(레딧·긱뉴스처럼 답글의 답글은 얼마든지 열려 있다)
+ * 바닥 없는 재귀를 막으려는 것이다. 실제로 여기까지 내려가는 대화는 거의 없고, 닿으면
+ * "새 댓글로 이어가 주세요"라고 안내한다.
+ *
+ * 들여쓰기는 이보다 훨씬 얕은 데서 멈춘다 — lib/comments.ts의 MAX_INDENT_DEPTH 참고.
+ * 좁은 화면에서 20단을 들여쓰면 글자가 한 줄에 두 자씩 남는다.
+ */
+export const MAX_REPLY_DEPTH = 20;
+
 /** 기본은 화제순 — '동의가 많은 댓글'이 아니라 '논의가 붙은 댓글'을 먼저 보여주려는 의도다.
  *  추천순을 기본으로 두면 다수 의견이 상단을 독점해 소수 의견이 시야에서 사라진다. */
 export const COMMENT_SORTS: ReadonlyArray<{ key: CommentSort; label: string }> = [

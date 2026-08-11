@@ -1,5 +1,5 @@
 /**
- * 댓글(1단 대댓글) + 추천 + 신고. 클라이언트에서 전부 그린다(계정 데이터라 SSR 없이
+ * 댓글(다단 스레드) + 추천 + 신고. 클라이언트에서 전부 그린다(계정 데이터라 SSR 없이
  * bookmarks.astro/feed.astro와 같은 방식 — mypage 등과 달리 여기선 초기 렌더도 클라이언트가 맡는다).
  *
  * 설계 의도(공론화 장): 비추천을 없앴고, 기본 정렬은 '동의가 많은 댓글'이 아니라
@@ -18,6 +18,7 @@ import {
 	COMMENT_MAX_LENGTH,
 	COMMENT_SORTS,
 	DEFAULT_COMMENT_SORT,
+	MAX_REPLY_DEPTH,
 	REPORT_REASONS,
 	formatRelativeTime,
 	getLevel,
@@ -49,6 +50,16 @@ const POLL_INTERVAL_MS = 30_000;
 const POLL_IDLE_STOP_MS = 5 * 60_000;
 
 const REPLY_GUIDELINE = "예의를 지키며 주제와 관련된 답글을 남겨주세요";
+
+/**
+ * 들여쓰기를 멈추는 깊이. 서버가 허용하는 MAX_REPLY_DEPTH(20단)와 다른 숫자다 —
+ * **얼마나 깊이 대화할 수 있는가**와 **얼마나 깊이 들여쓸 것인가**는 다른 문제다.
+ *
+ * 한 단에 1rem씩 밀리는데 좁은 화면(360px)에서 다섯 단을 넘기면 본문이 한 줄에 몇 자
+ * 남지 않는다. 그래서 여기서부터는 나란히 세우고, 대신 머리줄에 "↳ 닉네임"을 달아
+ * 누구에게 하는 말인지를 들여쓰기 대신 글자로 알려준다.
+ */
+const MAX_INDENT_DEPTH = 4;
 
 const NETWORK_ERROR = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요";
 
@@ -112,7 +123,7 @@ function countAll(comments: CommentDTO[]): number {
 	let n = 0;
 	for (const c of comments) {
 		if (!c.isHidden) n += 1;
-		n += c.replies.filter((r) => !r.isHidden).length;
+		n += countAll(c.replies); // 답글의 답글까지 센다
 	}
 	return n;
 }
@@ -121,10 +132,13 @@ function countAll(comments: CommentDTO[]): number {
  *  누가 하나 지우고 누가 하나 쓴 경우(증감 0)를 놓친다. */
 function allCommentIds(comments: CommentDTO[]): Set<string> {
 	const ids = new Set<string>();
-	for (const c of comments) {
-		ids.add(c.id);
-		for (const r of c.replies) ids.add(r.id);
-	}
+	const walk = (list: CommentDTO[]) => {
+		for (const c of list) {
+			ids.add(c.id);
+			walk(c.replies);
+		}
+	};
+	walk(comments);
 	return ids;
 }
 
@@ -342,12 +356,57 @@ function renderReportPanel(commentId: string, onReported: () => void): HTMLEleme
 	return panel;
 }
 
+interface FlatReply {
+	node: CommentDTO;
+	parentNickname: string;
+	/** 화면에서는 평평해도 서버가 보는 진짜 단수는 그대로 들고 간다(답글 버튼 판정용) */
+	depth: number;
+}
+
+/** 자손 전체를 DFS 순서로 편다. 들여쓰기를 멈춘 지점 아래에서만 쓴다. */
+function flattenDescendants(c: CommentDTO, depth: number, out: FlatReply[]): void {
+	for (const r of c.replies) {
+		out.push({ node: r, parentNickname: c.author.nickname, depth: depth + 1 });
+		flattenDescendants(r, depth + 1, out);
+	}
+}
+
 function renderComment(
 	c: CommentDTO,
 	scope: CommentScope,
 	depth: number,
 	refresh: () => void,
+	/** 들여쓰기가 멈춘 뒤 "↳ 누구에게"를 표시하려고 부모의 닉네임을 넘겨받는다 */
+	parentNickname?: string,
+	/** 이미 조상이 자손을 평평하게 펴놨다는 표시 — 자기 자식을 또 그리면 두 번 나온다 */
+	alreadyFlattened = false,
 ): HTMLElement {
+	const renderReplies = (into: HTMLElement) => {
+		if (alreadyFlattened || c.replies.length === 0) return;
+
+		// 자식은 부모의 '본문 칸' 안에 들어가므로, pl-4를 빼도 아바타 폭(약 44px)만큼은
+		// 계속 밀린다. 그래서 상한에 닿으면 클래스만 바꾸는 게 아니라 자손 전체를 꺼내
+		// 한 상자에 나란히 세운다. 이래야 들여쓰기가 진짜로 멈춘다.
+		if (depth >= MAX_INDENT_DEPTH) {
+			const flat: FlatReply[] = [];
+			flattenDescendants(c, depth, flat);
+			const flatWrap = el("div", "mt-2 divide-y divide-border");
+			for (const item of flat) {
+				flatWrap.appendChild(
+					renderComment(item.node, scope, item.depth, refresh, item.parentNickname, true),
+				);
+			}
+			into.appendChild(flatWrap);
+			return;
+		}
+
+		const wrapEl = el("div", "mt-2 pl-4 border-l border-border divide-y divide-border");
+		for (const reply of c.replies) {
+			wrapEl.appendChild(renderComment(reply, scope, depth + 1, refresh, c.author.nickname));
+		}
+		into.appendChild(wrapEl);
+	};
+
 	const avatar = getInitialAvatar(c.author.id, c.author.nickname);
 	const wrap = el("div", "flex gap-3 py-4");
 	wrap.dataset.commentId = c.id;
@@ -374,6 +433,11 @@ function renderComment(
 		head.appendChild(el("span", "text-[11px] font-semibold text-brand", `Lv.${level} ${grade.label}`));
 	}
 	head.appendChild(el("span", "text-text-secondary text-xs", formatRelativeTime(c.createdAt)));
+	// 들여쓰기가 멈춘 뒤로는 위치만으로 상대를 알 수 없다. 그때만 붙인다 —
+	// 얕은 곳에서도 달면 모든 답글에 붙는 배지가 되어 아무 정보도 주지 않는다.
+	if (depth > MAX_INDENT_DEPTH && parentNickname) {
+		head.appendChild(el("span", "text-text-secondary text-xs", `↳ ${parentNickname}`));
+	}
 	body.appendChild(head);
 
 	// 가려진 댓글은 접어두되 지우지는 않는다 — 오탐일 수 있으니 직접 확인할 길은 남긴다.
@@ -394,14 +458,8 @@ function renderComment(
 		collapsed.append(notice, toggle, revealed);
 		body.appendChild(collapsed);
 
-		if (c.replies.length > 0) {
-			// 가려진 글의 답글은 잘못한 게 없는 다른 사람들의 글이라 그대로 보여준다
-			const repliesWrap = el("div", "mt-2 pl-4 border-l border-border divide-y divide-border");
-			for (const reply of c.replies) {
-				repliesWrap.appendChild(renderComment(reply, scope, depth + 1, refresh));
-			}
-			body.appendChild(repliesWrap);
-		}
+		// 가려진 글의 답글은 잘못한 게 없는 다른 사람들의 글이라 그대로 보여준다
+		renderReplies(body);
 		return wrap;
 	}
 
@@ -454,7 +512,9 @@ function renderComment(
 			actions.append(upBtn, scoreEl);
 		}
 
-		if (depth === 0) {
+		// 답글의 답글을 허용한다(레딧·긱뉴스식). 서버 상한에 닿은 마지막 단에서만 버튼을
+		// 빼는데, 눌러봤자 "너무 깊어졌습니다"만 돌아오기 때문이다.
+		if (depth < MAX_REPLY_DEPTH) {
 			const replyBtn = el("button", "hover:text-text transition-colors", "답글");
 			replyBtn.type = "button";
 			replyBtn.addEventListener("click", () => {
@@ -500,7 +560,7 @@ function renderComment(
 		if (reportPanel) body.appendChild(reportPanel);
 	}
 
-	if (depth === 0 && c.status !== "deleted") {
+	if (depth < MAX_REPLY_DEPTH && c.status !== "deleted") {
 		replyForm = createComposer({
 			scope,
 			parentCommentId: c.id,
@@ -511,13 +571,7 @@ function renderComment(
 		body.appendChild(replyForm);
 	}
 
-	if (c.replies.length > 0) {
-		const repliesWrap = el("div", "mt-2 pl-4 border-l border-border divide-y divide-border");
-		for (const reply of c.replies) {
-			repliesWrap.appendChild(renderComment(reply, scope, depth + 1, refresh));
-		}
-		body.appendChild(repliesWrap);
-	}
+	renderReplies(body);
 
 	return wrap;
 }

@@ -1,8 +1,8 @@
-/** 댓글(1단 대댓글) + 추천 + 답글 알림. Phase 1의 db.ts와 분리해 응집도를 유지한다.
+/** 댓글(다단 스레드) + 추천 + 답글 알림. Phase 1의 db.ts와 분리해 응집도를 유지한다.
  *  신고/가림은 별도 축이라 server/reports.ts로 나눠 뒀다. */
 
 import type { CommentDTO, CommentSort } from "@dansum/shared";
-import { EXP_REWARDS } from "@dansum/shared";
+import { EXP_REWARDS, MAX_REPLY_DEPTH } from "@dansum/shared";
 import { awardExp } from "./exp";
 
 interface CommentRow {
@@ -43,14 +43,24 @@ const BASE = 1;
 const AGE_OFFSET_HOURS = 2;
 const AGE_EXPONENT = 0.6; // HN식 gravity. 활발한 스레드도 이틀쯤 지나면 새 댓글에 자리를 내준다
 
+/** 스레드 전체(자식의 자식까지)의 답글 수와 참여자. 직속 답글만 세면 답글이 다단으로
+ *  깊어질수록 실제 규모를 놓친다 — 다섯 명이 길게 주고받은 스레드가 1점으로 잡힌다. */
+function collectThread(c: CommentDTO, out: { replies: number; authors: Set<string> }): void {
+	for (const r of c.replies) {
+		out.replies += 1;
+		out.authors.add(r.author.id);
+		collectThread(r, out);
+	}
+}
+
 function activityScore(c: CommentDTO, nowMs: number): number {
-	const participants = new Set<string>([c.author.id]);
-	for (const r of c.replies) participants.add(r.author.id);
+	const thread = { replies: 0, authors: new Set<string>([c.author.id]) };
+	collectThread(c, thread);
 	const engagement =
 		BASE +
-		// 자기 자신에게 단 답글은 참여자 가산이 0이 된다(participants.size - 1)
-		W_PARTICIPANT * Math.log2(1 + (participants.size - 1)) +
-		W_REPLY * Math.log2(1 + c.replies.length) +
+		// 자기 자신에게 단 답글은 참여자 가산이 0이 된다(authors.size - 1)
+		W_PARTICIPANT * Math.log2(1 + (thread.authors.size - 1)) +
+		W_REPLY * Math.log2(1 + thread.replies) +
 		W_UPVOTE * Math.log2(1 + Math.max(0, c.score));
 	const ageHours = Math.max(0, (nowMs - Date.parse(c.createdAt)) / 3_600_000);
 	return engagement / (ageHours + AGE_OFFSET_HOURS) ** AGE_EXPONENT;
@@ -135,7 +145,9 @@ export async function listComments(
 		if (!row.parent_comment_id) topLevel.push(dto);
 	}
 
-	// 대댓글은 1단만 허용하지만, 부모가 지워진 뒤 자식만 남는 경우를 대비해 안전하게 붙인다
+	// 깊이 제한 없이 부모에 붙인다. rows가 created_at 오름차순이고 parent는 INSERT 시점에
+	// 이미 존재하던 댓글이라(그리고 이후 바뀌지 않는다) 부모는 언제나 자식보다 앞에 온다 —
+	// 순환이 생길 수 없으므로 이 조립은 항상 끝난다.
 	for (const row of rows) {
 		if (!row.parent_comment_id) continue;
 		const parent = byId.get(row.parent_comment_id);
@@ -143,9 +155,18 @@ export async function listComments(
 		if (parent && child) parent.replies.push(child);
 	}
 
-	// 삭제됐는데 답글도 없는 최상위는 "삭제된 댓글입니다"만 남는 순수 노이즈라 아예 뺀다.
-	// 답글이 달렸다면 스레드 맥락이 끊기므로 남긴다.
-	const visible = topLevel.filter((c) => c.status !== "deleted" || c.replies.length > 0);
+	// 삭제됐는데 답글도 없으면 "삭제된 댓글입니다"만 남는 순수 노이즈다. 답글이 달렸다면
+	// 스레드 맥락이 끊기므로 남긴다. 다단이 되면서 이 규칙을 깊이 상관없이 적용한다 —
+	// 잎에서부터 걷어내야 "삭제된 댓글 밑에 삭제된 댓글"이 사슬로 남지 않는다.
+	const pruneDeleted = (list: CommentDTO[]): CommentDTO[] => {
+		const kept: CommentDTO[] = [];
+		for (const c of list) {
+			c.replies = pruneDeleted(c.replies);
+			if (c.status !== "deleted" || c.replies.length > 0) kept.push(c);
+		}
+		return kept;
+	};
+	const visible = pruneDeleted(topLevel);
 
 	// 최상위만 정렬 기준을 바꾼다(대댓글은 스레드 흐름을 위해 항상 작성순 유지).
 	// 동점/동시각일 땐 최신이 위로 오도록 createdAt 내림차순을 항상 2차 기준으로 둔다.
@@ -195,16 +216,29 @@ export async function createComment(
 	}
 
 	if (params.parentCommentId) {
+		// 부모 정보와 '그 부모가 몇 단째인지'를 한 번에 구한다. 재귀 CTE로 최상위까지 거슬러
+		// 올라가며 세는데, parent_comment_id는 INSERT 이후 바뀌지 않고 항상 자기보다 오래된
+		// 댓글을 가리키므로 순환이 없다. 그래도 depth 상한을 걸어 CTE 자체를 유한하게 묶는다.
 		const parent = await db
 			.prepare(
-				"SELECT article_id, discussion_id, user_id, parent_comment_id FROM comments WHERE id = ? AND status = 'active'",
+				`WITH RECURSIVE chain(id, parent_comment_id, depth) AS (
+				   SELECT id, parent_comment_id, 0 FROM comments WHERE id = ?1
+				   UNION ALL
+				   SELECT c.id, c.parent_comment_id, chain.depth + 1
+				     FROM comments c JOIN chain ON c.id = chain.parent_comment_id
+				    WHERE chain.depth < ${MAX_REPLY_DEPTH + 1}
+				 )
+				 SELECT p.article_id, p.discussion_id, p.user_id,
+				        (SELECT MAX(depth) FROM chain) AS depth
+				   FROM comments p
+				  WHERE p.id = ?1 AND p.status = 'active'`,
 			)
 			.bind(params.parentCommentId)
 			.first<{
 				article_id: string | null;
 				discussion_id: string | null;
 				user_id: string;
-				parent_comment_id: string | null;
+				depth: number;
 			}>();
 
 		// 부모가 같은 대상에 달려 있어야 한다(남의 기사 댓글에 답글을 심는 것을 막는다)
@@ -214,8 +248,10 @@ export async function createComment(
 				: parent.discussion_id === discussionId
 			: false;
 		if (!sameTarget) return { ok: false, error: "댓글을 찾을 수 없습니다" };
-		if (parent?.parent_comment_id) {
-			return { ok: false, error: "대댓글에는 답글을 달 수 없습니다" };
+		// 이제 답글의 답글을 허용한다(예전엔 1단에서 막았다). 다만 무한히 깊어지게 두지는
+		// 않는다 — 화면에서 읽히지 않고, 클라이언트 재귀 렌더에 바닥이 없어진다.
+		if (parent && parent.depth >= MAX_REPLY_DEPTH) {
+			return { ok: false, error: "답글이 너무 깊어졌습니다. 새 댓글로 이어가 주세요" };
 		}
 		if (parent && parent.user_id !== params.userId) {
 			notify = { userId: parent.user_id, kind: "reply" };
