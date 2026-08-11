@@ -1,6 +1,6 @@
 import { COMMENT_MAX_LENGTH, EXP_REWARDS, parseCommentSort } from "@dansum/shared";
 import type { APIRoute } from "astro";
-import { createComment, createReplyNotification, listComments } from "../../../lib/server/comments";
+import { createComment, createCommentNotification, listComments } from "../../../lib/server/comments";
 import type { CommentTarget } from "../../../lib/server/comments";
 import { json, unauthorized } from "../../../lib/server/http";
 import { awardCommentCreated, awardExp } from "../../../lib/server/exp";
@@ -93,12 +93,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	// 작성 보상(하루 상한 안에서만). 배지 확인도 여기서 함께 돈다.
 	await awardCommentCreated(DB, locals.user.id, result.id);
 
-	if (result.notifyUserId) {
-		// 답글을 받은 쪽에 보상 — 논의를 촉발한 댓글에 주는 몫이다.
-		// 본인이 자기 글에 단 답글이면 notifyUserId가 null이라 자기 적립은 애초에 불가능하다.
-		await awardExp(DB, result.notifyUserId, EXP_REWARDS.replyReceived, "reply_received", "comment", result.id);
-		await createReplyNotification(DB, {
-			toUserId: result.notifyUserId,
+	if (result.notify) {
+		// 논의를 촉발한 쪽에 보상 — 내 댓글에 답글이 달렸거나, 내 토론에 댓글이 달렸을 때다.
+		// 본인이 자기 글에 단 것이면 notify가 null이라 자기 적립은 애초에 불가능하다.
+		await awardExp(DB, result.notify.userId, EXP_REWARDS.replyReceived, "reply_received", "comment", result.id);
+		await createCommentNotification(DB, {
+			toUserId: result.notify.userId,
+			type: result.notify.kind,
 			articleId: "articleId" in target ? target.articleId : null,
 			discussionId: "discussionId" in target ? target.discussionId : null,
 			commentId: result.id,

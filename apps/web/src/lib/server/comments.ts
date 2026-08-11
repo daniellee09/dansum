@@ -164,11 +164,20 @@ export async function listComments(
 	return visible;
 }
 
+/** 이 댓글로 누구에게 무엇을 알릴지. 답글은 부모 댓글 작성자에게, 토론의 최상위 댓글은
+ *  글쓴이에게 간다(같은 'reply' 문구를 쓰면 "답글을 남겼습니다"가 되어 사실과 어긋난다). */
+export interface CommentNotifyTarget {
+	userId: string;
+	kind: "reply" | "discussion_comment";
+}
+
 export async function createComment(
 	db: D1Database,
 	params: { target: CommentTarget; userId: string; parentCommentId: string | null; body: string },
-): Promise<{ ok: true; id: string; notifyUserId: string | null } | { ok: false; error: string }> {
-	let notifyUserId: string | null = null;
+): Promise<
+	{ ok: true; id: string; notify: CommentNotifyTarget | null } | { ok: false; error: string }
+> {
+	let notify: CommentNotifyTarget | null = null;
 
 	const articleId = "articleId" in params.target ? params.target.articleId : null;
 	const discussionId = "discussionId" in params.target ? params.target.discussionId : null;
@@ -208,7 +217,18 @@ export async function createComment(
 		if (parent?.parent_comment_id) {
 			return { ok: false, error: "대댓글에는 답글을 달 수 없습니다" };
 		}
-		if (parent && parent.user_id !== params.userId) notifyUserId = parent.user_id;
+		if (parent && parent.user_id !== params.userId) {
+			notify = { userId: parent.user_id, kind: "reply" };
+		}
+	} else if (discussionId) {
+		// 토론의 최상위 댓글은 글쓴이에게 알린다. 기사에는 '주인'이 없어 이 경로가 없다.
+		const author = await db
+			.prepare("SELECT user_id FROM discussions WHERE id = ?")
+			.bind(discussionId)
+			.first<{ user_id: string }>();
+		if (author && author.user_id !== params.userId) {
+			notify = { userId: author.user_id, kind: "discussion_comment" };
+		}
 	}
 
 	const id = crypto.randomUUID();
@@ -219,7 +239,7 @@ export async function createComment(
 		.bind(id, articleId, discussionId, params.userId, params.parentCommentId, params.body)
 		.run();
 
-	return { ok: true, id, notifyUserId };
+	return { ok: true, id, notify };
 }
 
 /**
@@ -355,7 +375,7 @@ export async function voteComment(
 
 export interface NotificationDTO {
 	id: string;
-	/** 'reply' | 'keyword'. 렌더는 lib/notifications.ts가 타입별로 분기한다. */
+	/** 'reply' | 'discussion_comment' | 'keyword'. 렌더는 lib/notifications.ts가 분기한다. */
 	type: string;
 	payload: {
 		articleId: string;
@@ -373,23 +393,26 @@ export interface NotificationDTO {
 	createdAt: string;
 }
 
-export async function createReplyNotification(
+export async function createCommentNotification(
 	db: D1Database,
 	params: {
 		toUserId: string;
-		/** 기사 답글이면 채워진다. listNotifications가 이 값으로 기사 제목을 조인한다. */
+		/** 'reply'(내 댓글에 답글) | 'discussion_comment'(내 토론에 댓글) */
+		type: "reply" | "discussion_comment";
+		/** 기사 댓글이면 채워진다. listNotifications가 이 값으로 기사 제목을 조인한다. */
 		articleId: string | null;
-		/** 토론 답글이면 채워진다. */
+		/** 토론 댓글이면 채워진다(제목은 discussions에서 조인). */
 		discussionId?: string | null;
 		commentId: string;
 		fromNickname: string;
 	},
 ): Promise<void> {
 	await db
-		.prepare("INSERT INTO notifications (id, user_id, type, payload) VALUES (?, ?, 'reply', ?)")
+		.prepare("INSERT INTO notifications (id, user_id, type, payload) VALUES (?, ?, ?, ?)")
 		.bind(
 			crypto.randomUUID(),
 			params.toUserId,
+			params.type,
 			JSON.stringify({
 				articleId: params.articleId,
 				discussionId: params.discussionId ?? null,

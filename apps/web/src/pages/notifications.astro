@@ -13,8 +13,10 @@ const notifications = await listNotifications(Astro.locals.runtime.env.DB, user.
 function href(n: (typeof notifications)[number]): string {
 	// lib/notifications.ts의 notificationLink와 같은 규칙(종류별 목적지)
 	if (n.type === "keyword" && n.payload.issueId) return `/issue/${n.payload.issueId}`;
-	if (n.payload.commentId) return `/article/${n.payload.articleId}#comment-${n.payload.commentId}`;
-	return `/article/${n.payload.articleId}`;
+	const base = n.payload.discussionId
+		? `/discuss/${n.payload.discussionId}`
+		: `/article/${n.payload.articleId}`;
+	return n.payload.commentId ? `${base}#comment-${n.payload.commentId}` : base;
 }
 ---
 
@@ -35,7 +37,7 @@ function href(n: (typeof notifications)[number]): string {
 			<div class="py-16 text-center">
 				<p class="text-sm text-text-secondary">아직 알림이 없습니다.</p>
 				<p class="mt-1 text-xs text-text-secondary">
-					기사의 키워드 옆 종을 누르면 그 주제의 새 이슈를 알려드려요.
+					답글이 달리거나, 회원님이 연 토론에 댓글이 달리면 여기로 알려드려요.
 				</p>
 			</div>
 		) : (
@@ -53,6 +55,8 @@ function href(n: (typeof notifications)[number]): string {
 							<p class="text-sm text-text">
 								{n.type === "keyword" ? (
 									<><span class="font-semibold">{n.payload.keyword}</span> 관련 새 이슈가 올라왔습니다</>
+								) : n.type === "discussion_comment" ? (
+									<><span class="font-semibold">{n.payload.fromNickname}</span>님이 회원님의 토론에 댓글을 남겼습니다</>
 								) : (
 									<><span class="font-semibold">{n.payload.fromNickname}</span>님이 댓글에 답글을 남겼습니다</>
 								)}

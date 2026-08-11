@@ -12,6 +12,7 @@ interface NotificationDTO {
 		articleTitle: string | null;
 		commentId?: string;
 		fromNickname?: string;
+		discussionId?: string | null;
 		issueId?: string;
 		keyword?: string;
 	};
@@ -23,10 +24,12 @@ interface NotificationDTO {
 function notificationLink(n: NotificationDTO): string {
 	// 키워드 알림은 이슈 전체를 보여준다 — 알림이 가리키는 건 기사 한 건이 아니라 사건이다.
 	if (n.type === "keyword" && n.payload.issueId) return `/issue/${n.payload.issueId}`;
-	// 답글은 그 댓글까지 데려간다. 기사 최상단에 떨궈놓으면 어떤 답글인지 찾는 건 사용자 몫이 된다
-	// (긴 스레드에서 사실상 못 찾는다). comments.ts의 focusHashComment가 받는다.
-	if (n.payload.commentId) return `/article/${n.payload.articleId}#comment-${n.payload.commentId}`;
-	return `/article/${n.payload.articleId}`;
+	// 댓글 알림은 그 댓글까지 데려간다. 최상단에 떨궈놓으면 어떤 댓글인지 찾는 건 사용자 몫이
+	// 된다(긴 스레드에서 사실상 못 찾는다). comments.ts의 focusHashComment가 받는다.
+	const base = n.payload.discussionId
+		? `/discuss/${n.payload.discussionId}`
+		: `/article/${n.payload.articleId}`;
+	return n.payload.commentId ? `${base}#comment-${n.payload.commentId}` : base;
 }
 
 /** 첫 줄을 만든다. 사용자가 정한 값(닉네임·키워드)은 textContent로만 넣는다(XSS 방지). */
@@ -38,6 +41,9 @@ export function notificationHeadline(n: NotificationDTO): HTMLElement {
 	if (n.type === "keyword") {
 		strong.textContent = n.payload.keyword ?? "";
 		line.append(strong, " 관련 새 이슈가 올라왔습니다");
+	} else if (n.type === "discussion_comment") {
+		strong.textContent = n.payload.fromNickname ?? "";
+		line.append(strong, "님이 회원님의 토론에 댓글을 남겼습니다");
 	} else {
 		strong.textContent = n.payload.fromNickname ?? "";
 		line.append(strong, "님이 댓글에 답글을 남겼습니다");
