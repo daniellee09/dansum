@@ -19,6 +19,16 @@ const grade = getGradeByLevel(level);
 
 <BaseLayout title={`${d.title} - 단숨`} description={d.body.slice(0, 120)}>
 	<section class="max-w-[46rem]">
+		{/* 기사 상세는 이 링크를 맨 아래(원문 보기 옆)에 두지만 여기서는 위에 둔다 —
+		    아래는 댓글 스레드가 끝나는 자리라 길이를 알 수 없고, 그만큼 스크롤해야 닿는다. */}
+		<a
+			id="back-to-discuss"
+			href="/discuss"
+			class="mb-3 inline-block text-[13px] font-semibold text-text-secondary transition-colors hover:text-text"
+		>
+			&larr; 토론 목록
+		</a>
+
 		<div class="flex items-center gap-2 text-[13px] text-text-secondary">
 			<span
 				class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
@@ -83,8 +93,14 @@ const grade = getGradeByLevel(level);
 
 <script>
 	import { mountComments } from "../../lib/comments";
+	import { setupBackLink } from "../../lib/backLink";
 
 	document.addEventListener("astro:page-load", () => {
+		// 토론 목록에서 들어왔을 때만 뒤로 가기를 쓴다(골라둔 정렬과 스크롤이 남는다).
+		// /feed의 "진행 중인 토론"에서 들어왔다면 폴백 href로 /discuss에 보낸다 —
+		// "토론 목록"이라 적힌 링크가 /feed로 돌아가면 말과 동작이 어긋난다.
+		setupBackLink("back-to-discuss", (prev) => prev === "/discuss" || prev.startsWith("/discuss?"));
+
 		const root = document.querySelector<HTMLElement>("[data-comments]");
 		const discussionId = root?.dataset.discussionId;
 		if (root && discussionId) mountComments(root, { discussionId });

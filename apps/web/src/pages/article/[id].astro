@@ -421,22 +421,12 @@ const topicSuggestions =
 </script>
 
 <script>
-	// "목록으로": 같은 사이트 안에서 들어왔으면 이전 목록(홈/주요뉴스·카테고리)으로
-	// 되돌아간다(스크롤 위치 보존). 직접 접속 등 기록이 없으면 href 폴백.
-	// View Transitions로 본문이 교체되므로 매 page-load마다 재바인딩한다.
-	function setupBackToList() {
-		const back = document.getElementById("back-to-list");
-		if (!back) return;
-		const ref = document.referrer;
-		const sameOrigin = ref && new URL(ref).origin === location.origin;
-		const cameFromArticle = sameOrigin && new URL(ref).pathname.startsWith("/article/");
-		if (sameOrigin && !cameFromArticle) {
-			back.addEventListener("click", (e) => {
-				e.preventDefault();
-				history.back();
-			});
-		}
-	}
+	import { setupBackLink } from "../../lib/backLink";
 
-	document.addEventListener("astro:page-load", setupBackToList);
+	// "목록으로"는 목록 종류를 가리지 않는다(홈·주요뉴스·카테고리·검색 어디든). 다만 기사에서
+	// 기사로 건너온 경우는 제외한다 — 그때 뒤로 가기는 목록이 아니라 직전 기사로 돌아간다.
+	// View Transitions로 본문이 교체되므로 매 page-load마다 재바인딩한다.
+	document.addEventListener("astro:page-load", () =>
+		setupBackLink("back-to-list", (prev) => !prev.startsWith("/article/")),
+	);
 </script>
