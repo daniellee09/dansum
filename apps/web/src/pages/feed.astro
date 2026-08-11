@@ -86,9 +86,7 @@ const sourceNamesJson = JSON.stringify(sourceNames).replace(/</g, "\\u003c");
 	import { CATEGORY_LABELS } from "@dansum/shared";
 	import { getFollowedSources, getFollowedCategories } from "../lib/follows";
 	import { getArticles } from "../lib/api";
-	import { renderArticleCard } from "../lib/renderArticleCard";
-	import { setupBookmarkButtons } from "../lib/bookmarks";
-	import { setupCommentCounts } from "../lib/commentCounts";
+	import { renderHeadlineRow } from "../lib/renderArticleCard";
 
 	function chip(href: string, label: string): HTMLAnchorElement {
 		const a = document.createElement("a");
@@ -163,10 +161,10 @@ const sourceNamesJson = JSON.stringify(sourceNames).replace(/</g, "\\u003c");
 			return;
 		}
 
-		for (const a of merged) list.appendChild(renderArticleCard(a));
+		// 헤드라인만 그린다(renderHeadlineRow 주석 참고). 북마크·댓글 수 배선이 여기서 사라진
+		// 이유도 그것 — 행에 버튼이 없으니 붙일 데가 없다.
+		for (const a of merged) list.appendChild(renderHeadlineRow(a));
 		list.classList.remove("hidden");
-		setupBookmarkButtons(list);
-		setupCommentCounts(list);
 	}
 
 	document.addEventListener("astro:page-load", loadFeed);

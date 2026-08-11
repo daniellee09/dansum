@@ -100,11 +100,17 @@ try {
 	check("follow toggle sets aria-pressed", (await followBtn.getAttribute("aria-pressed")) === "true");
 
 	await page.goto(`${BASE}/feed`, { waitUntil: "networkidle" });
+	// 피드는 카드가 아니라 헤드라인 행(renderHeadlineRow)이라 <article>이 없다 — 링크로 센다.
+	const feedRow = '#feed-list a[href^="/article/"]';
 	await page.waitForSelector(
-		"#feed-list article, #feed-empty-follow:not(.hidden), #feed-empty-results:not(.hidden)",
+		`${feedRow}, #feed-empty-follow:not(.hidden), #feed-empty-results:not(.hidden)`,
 		{ timeout: 5000 },
 	);
-	check("/feed shows articles from the followed source", (await page.locator("#feed-list article").count()) > 0);
+	check("/feed shows articles from the followed source", (await page.locator(feedRow).count()) > 0);
+	check(
+		"/feed rows are headlines only (no summary panel, no bookmark button)",
+		(await page.locator("#feed-list [data-bookmark-toggle], #feed-list .line-clamp-2").count()) === 0,
+	);
 
 	// 팔로우 칩: "이 피드가 무엇으로 만들어졌는지"를 보여주는 줄. 비로그인이라 목록 자체는
 	// localStorage에서 오지만 매체 '이름'은 서버가 심어준 맵에서 온다 — id가 그대로 보이면 실패.
@@ -126,7 +132,7 @@ try {
 	// 댓글(공론화 장): 비로그인으로 확인 가능한 것만 본다. 작성/추천/신고는 계정이 필요해
 	// 여기선 다루지 않는다(시드에 계정이 없는 환경에서도 스위트가 돌아야 하므로).
 	const articleHref = await page
-		.locator('#feed-list article a[href^="/article/"], #article-list article a[href^="/article/"]')
+		.locator(`${feedRow}, #article-list article a[href^="/article/"]`)
 		.first()
 		.getAttribute("href")
 		.catch(() => null);

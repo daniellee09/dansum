@@ -112,6 +112,36 @@ export function renderArticleCard(a: Article): HTMLElement {
 }
 
 /**
+ * "내 피드"의 헤드라인 행. 요약 패널·카테고리·매체 아이콘·북마크·댓글 수를 전부 뺐다.
+ *
+ * 피드는 팔로우한 곳을 **훑는** 자리다. 카드마다 요약 패널과 버튼이 붙으면 무엇을 읽을지
+ * 고르기도 전에 지친다. 고른 다음에 필요한 것들은 기사 화면에 그대로 있다.
+ *
+ * 남긴 한 줄은 매체명과 시간이다 — 여러 매체를 섞어 보여주는 목록이라 어디서 온 기사인지가
+ * 제목 다음으로 중요하다(그게 없으면 이 목록은 그냥 제목 더미가 된다).
+ *
+ * 아래 renderCompactArticleRow와 모양이 닮았지만 합치지 않는다. 그쪽은 20rem 사이드바용이라
+ * 글자가 한 단계 작고, 본문 칸에 그대로 쓰면 읽히지 않는다.
+ */
+export function renderHeadlineRow(a: Article): HTMLElement {
+	const link = document.createElement("a");
+	link.href = `/article/${a.id}`;
+	link.className = "group block py-3.5";
+
+	const title = document.createElement("p");
+	title.className =
+		"text-[15px] font-semibold leading-snug text-text transition-colors group-hover:text-brand";
+	title.textContent = a.title;
+
+	const meta = document.createElement("p");
+	meta.className = "mt-1 text-xs text-text-secondary tabular-nums";
+	meta.textContent = `${a.sourceName} · ${formatRelativeTime(a.publishedAt)}`;
+
+	link.append(title, meta);
+	return link;
+}
+
+/**
  * 20rem 폭 사이드바 위젯(홈 화면 "팔로우한 매체 최신 소식"·"최근 본 기사")용 컴팩트 행.
  * article/[id].astro 사이드바의 "다른 기사"/"관련 보도" 목록과 같은 톤(제목 line-clamp-2 +
  * 매체명·시간 한 줄)이지만 그쪽은 SSR 마크업이라 이 클라이언트 렌더 목록과는 별도로 둔다.
