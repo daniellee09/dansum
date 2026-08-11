@@ -2,21 +2,25 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import DiscussionCard from "../components/DiscussionCard.astro";
 import TopicSuggestions from "../components/TopicSuggestions.astro";
+import SortTabs from "../components/SortTabs.astro";
 import { listDiscussions, suggestTopics } from "../lib/server/discussions";
 
 const db = Astro.locals.runtime.env.DB;
-const [discussions, topics] = await Promise.all([listDiscussions(db, 30), suggestTopics(db, 3)]);
+// 쿼리가 없으면 인기순. 목록 페이지들과 달리 여기는 인기순이 기본이라 SortTabs에 알려준다.
+const sort = Astro.url.searchParams.get("sort") === "latest" ? "latest" : "hot";
+const [discussions, topics] = await Promise.all([
+	listDiscussions(db, 30, sort),
+	suggestTopics(db, 3),
+]);
 ---
 
 <BaseLayout title="토론 - 단숨" description="경제 이슈를 두고 오가는 이야기">
 	<section>
-		<div class="mb-1 flex items-baseline justify-between gap-3">
+		<div class="mb-2 flex items-baseline justify-between gap-3">
 			<h2 class="text-lg font-bold">토론</h2>
 			<a href="/discuss/new" class="text-[13px] text-brand hover:underline">토론 열기</a>
 		</div>
-		<p class="mb-5 text-[13px] text-text-secondary">
-			댓글 수보다 <strong class="font-semibold">참여한 사람 수</strong>를 먼저 봅니다.
-		</p>
+		<SortTabs basePath="/discuss" sort={sort} defaultSort="hot" />
 
 		{/* 추천을 목록 위에 둔다. 빈 게시판을 막는 장치이자, "무엇을 이야기할지"를 정하는
 		    부담을 덜어주는 자리다 — 시스템은 여기까지만 관여하고 주제는 사람이 고른다. */}

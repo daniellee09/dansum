@@ -96,20 +96,32 @@ function toListItem(r: Row): DiscussionListItem {
 	};
 }
 
+export type DiscussionSort = "hot" | "latest";
+
 /**
- * 토론 목록. 정렬은 하나뿐이다 — 추천순 탭을 따로 두면 "다수 의견이 상단을 독점"이 모자만
- * 바꿔 쓴 것이 된다. 가려진 글은 목록에서 뺀다(댓글과 달리 '펼쳐보기'로 확인할 맥락이 없다).
+ * 토론 목록. 기본은 인기순이다 — 여기서 '인기'는 추천 수가 아니라 discussionScore이고,
+ * 그 안에서 댓글 수보다 서로 다른 참여자 수에 훨씬 큰 가중치가 걸린다(server/comments.ts).
+ * 추천 수만으로 줄 세우는 탭은 두지 않는다.
+ *
+ * 가려진 글은 목록에서 뺀다(댓글과 달리 '펼쳐보기'로 확인할 맥락이 없다).
  */
-export async function listDiscussions(db: D1Database, limit = 30): Promise<DiscussionListItem[]> {
+export async function listDiscussions(
+	db: D1Database,
+	limit = 30,
+	sort: DiscussionSort = "hot",
+): Promise<DiscussionListItem[]> {
 	const { results } = await db
 		.prepare(`${SELECT_BASE} WHERE d.status = 'active' AND d.hidden_at IS NULL LIMIT 200`)
 		.all<Row>();
 
 	const now = Date.now();
-	return results
-		.map(toListItem)
-		.sort((a, b) => discussionScore(b, now) - discussionScore(a, now) || b.lastAt.localeCompare(a.lastAt))
-		.slice(0, limit);
+	const items = results.map(toListItem);
+	items.sort((a, b) =>
+		sort === "latest"
+			? b.createdAt.localeCompare(a.createdAt)
+			: discussionScore(b, now) - discussionScore(a, now) || b.lastAt.localeCompare(a.lastAt),
+	);
+	return items.slice(0, limit);
 }
 
 export async function getDiscussion(

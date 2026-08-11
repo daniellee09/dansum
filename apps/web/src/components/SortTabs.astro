@@ -7,9 +7,11 @@ interface Props {
 	sort: "relevance" | "latest" | "hot";
 	/** 검색 결과처럼 기본 정렬이 관련도순인 페이지에서만 "관련도순" 탭을 추가한다 */
 	showRelevance?: boolean;
+	/** 쿼리 없이 들어왔을 때의 정렬. 목록 페이지는 최신순이지만 토론은 인기순이 기본이다. */
+	defaultSort?: "latest" | "hot";
 }
 
-const { basePath, extraParams, sort, showRelevance = false } = Astro.props;
+const { basePath, extraParams, sort, showRelevance = false, defaultSort = "latest" } = Astro.props;
 
 function hrefFor(sortParam: "latest" | "hot" | null): string {
 	const params = new URLSearchParams(extraParams);
@@ -26,10 +28,15 @@ const tabs = showRelevance
 			{ key: "latest" as const, label: "최신순", href: hrefFor("latest") },
 			{ key: "hot" as const, label: "인기순", href: hrefFor("hot") },
 		]
-	: [
-			{ key: "latest" as const, label: "최신순", href: hrefFor(null) },
-			{ key: "hot" as const, label: "인기순", href: hrefFor("hot") },
-		];
+	: defaultSort === "hot"
+		? [
+				{ key: "hot" as const, label: "인기순", href: hrefFor(null) },
+				{ key: "latest" as const, label: "최신순", href: hrefFor("latest") },
+			]
+		: [
+				{ key: "latest" as const, label: "최신순", href: hrefFor(null) },
+				{ key: "hot" as const, label: "인기순", href: hrefFor("hot") },
+			];
 ---
 
 <!-- 깃허브식 밑줄 탭. 서버에서 ?sort 쿼리로 판단하므로 클라이언트 JS 없이 SSR로 동작.
