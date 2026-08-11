@@ -16,7 +16,9 @@ export {
 	sharedKeywords,
 	toKeywordSet,
 	MIN_SHARED_KEYWORDS,
-	COMMON_KEYWORD_ISSUE_COUNT,
+	COMMON_KEYWORD_MIN_COUNT,
+	COMMON_KEYWORD_BATCH_RATIO,
+	findCommonKeywords,
 	ISSUE_MATCH_KEYWORD_MAX,
 	ISSUE_ABSORB_WINDOW_HOURS,
 } from "./cluster.js";

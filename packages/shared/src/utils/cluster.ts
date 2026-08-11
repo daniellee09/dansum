@@ -26,22 +26,49 @@ export function sharedKeywords(a: Set<string>, b: Set<string>): string[] {
 export const MIN_SHARED_KEYWORDS = 2;
 
 /**
- * 이 개수 이상의 서로 다른 이슈가 매칭 집합에 갖고 있는 키워드는 '상투어'로 본다.
- * 상투어만으로는 두 기사를 잇지 못한다 — 공유 키워드 중 최소 하나는 드문 말이어야 한다.
+ * '상투어'(연결자로 쓰면 안 되는 흔한 말) 판정 기준.
  *
  * 왜 필요한가: 키워드 동결(ISSUE_MATCH_KEYWORD_MAX)은 이슈가 무한히 커지는 것을 막지만,
  * 상투어가 '연결자'로 쓰이는 것은 못 막는다. 운영 데이터에서 "2분기실적"이 72시간에 191번,
  * "조정ebitda"가 44번 나온다. MIN_SHARED_KEYWORDS=2에서는 이 둘만 겹쳐도 식스플래그스와
  * Warrior Met Coal이 한 이슈가 된다(실제로 그렇게 묶였다).
  *
- * 임계값을 왜 이 방향으로 풀었나: MIN_SHARED_KEYWORDS를 3으로 올리는 게 더 단순하지만,
- * 같은 데이터에서 교차매체 이슈가 26개 → 3개로 무너진다. "여러 매체가 함께 보도한 이슈"가
- * 제품의 핵심인데 그걸 죽이는 셈이다. 이 필터는 교차매체 26 → 24만 잃으면서 최대 이슈를
- * 27건 → 14건으로 줄이고, 홈 화면(30시간 창)에는 아무 변화도 주지 않는다.
+ * 왜 MIN_SHARED_KEYWORDS를 3으로 올리지 않았나: 더 단순하지만 같은 데이터에서 교차매체
+ * 이슈가 26개 → 3개로 무너진다. "여러 매체가 함께 보도한 이슈"가 제품의 핵심인데 그걸
+ * 죽이는 처방이다.
  *
- * 빈도는 별도 테이블이나 추가 조회 없이, 이미 로드한 열린 이슈들의 match_keywords에서 센다.
+ * 왜 '이슈 수'가 아니라 '기사 수'로 세나: 이슈 기준으로 세면 상투어가 여러 이슈에 퍼지지
+ * 않고 한 이슈에 몰려버려 빈도가 임계값에 닿지 않는다(실제로 운영에서 그래서 안 먹었다).
+ * 기사 기준으로 세면 상투어는 정의상 반드시 흔하다.
+ *
+ * 운영 데이터 1,173건을 실제 드레인 경로(200건 배치)로 재현한 결과:
+ *   필터 없음      최대 21건 | 교차매체 25 | 홈창 교차매체 21
+ *   이슈 수 기준    최대 12건 | 교차매체 26 | 홈창 교차매체 22
+ *   기사 수 기준    최대  6건 | 교차매체 27 | 홈창 교차매체 24   ← 모든 지표에서 우월
  */
-export const COMMON_KEYWORD_ISSUE_COUNT = 6;
+export const COMMON_KEYWORD_MIN_COUNT = 5;
+/** 배치가 클수록 절대 개수 기준은 느슨해지므로 비율도 함께 본다(둘 중 큰 값이 임계값). */
+export const COMMON_KEYWORD_BATCH_RATIO = 0.03;
+
+/**
+ * 배치 안에서 '흔한 말'의 집합을 만든다. 임계값에 못 미치는 배치(예: cron의 10건)에서는
+ * 사실상 아무것도 걸리지 않는데, 그래도 된다 — 작은 배치는 애초에 블롭을 만들지 않는다.
+ */
+export function findCommonKeywords(keywordSets: Set<string>[]): Set<string> {
+	const df = new Map<string, number>();
+	for (const set of keywordSets) {
+		for (const k of set) df.set(k, (df.get(k) ?? 0) + 1);
+	}
+	const threshold = Math.max(
+		COMMON_KEYWORD_MIN_COUNT,
+		Math.ceil(keywordSets.length * COMMON_KEYWORD_BATCH_RATIO),
+	);
+	const common = new Set<string>();
+	for (const [k, n] of df) {
+		if (n >= threshold) common.add(k);
+	}
+	return common;
+}
 
 /**
  * 이슈 하나가 보관하는 매칭 키워드 상한. LLM이 기사당 3~6개를 뽑으므로 8이면 넉넉하다.
