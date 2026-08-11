@@ -1,0 +1,116 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { DISCUSSION_BODY_MAX, DISCUSSION_TITLE_MAX } from "../../lib/server/discussions";
+import { getIssue } from "../../lib/api";
+
+const user = Astro.locals.user;
+const issueParam = Astro.url.searchParams.get("issue");
+if (!user) {
+	const back = `/discuss/new${issueParam ? `?issue=${issueParam}` : ""}`;
+	return Astro.redirect(`/login?redirect=${encodeURIComponent(back)}`);
+}
+
+// 이슈 연결은 선택이다. 추천에서 넘어왔을 때만 채워지고, 없으면 자유 주제 글이 된다.
+let issueTitle: string | null = null;
+let issueId: string | null = null;
+if (issueParam) {
+	try {
+		const issue = await getIssue(issueParam);
+		issueTitle = issue.lead.title;
+		issueId = issue.id;
+	} catch {
+		// 이슈를 못 찾으면 그냥 자유 주제로 연다 — 여기서 막을 이유가 없다.
+	}
+}
+---
+
+<BaseLayout title="토론 열기 - 단숨" description="경제 이슈를 두고 이야기를 시작하세요">
+	<section class="max-w-[42rem]">
+		<h2 class="text-lg font-bold mb-1">토론 열기</h2>
+		<p class="mb-5 text-[13px] text-text-secondary">
+			사람이 아니라 주장을 이야기해주세요. 근거가 있으면 찬성이든 반대든 환영합니다.
+		</p>
+
+		{issueTitle && (
+			<div class="mb-4 rounded-md border border-border bg-brand/5 px-3 py-2.5 dark:bg-brand/10">
+				<p class="text-[13px] text-text-secondary">연결된 이슈</p>
+				<p class="mt-0.5 text-sm text-text">{issueTitle}</p>
+			</div>
+		)}
+
+		<form id="discussion-form" class="flex flex-col gap-3" data-issue-id={issueId ?? ""}>
+			<div>
+				<input
+					id="d-title"
+					type="text"
+					placeholder="무엇에 대해 이야기할까요?"
+					maxlength={DISCUSSION_TITLE_MAX}
+					class="w-full rounded-md border border-border bg-surface-alt px-3 py-2.5 text-[15px] outline-none focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
+				/>
+			</div>
+			<div>
+				<textarea
+					id="d-body"
+					rows="10"
+					placeholder="어떻게 보셨는지, 왜 그렇게 생각하는지 적어주세요."
+					maxlength={DISCUSSION_BODY_MAX}
+					class="w-full rounded-md border border-border bg-surface-alt px-3 py-2.5 text-[15px] outline-none focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/40"
+				></textarea>
+			</div>
+			<div class="flex items-center justify-between gap-3">
+				<span id="d-error" class="text-sm text-hot"></span>
+				<div class="flex items-center gap-3">
+					<span id="d-count" class="text-xs text-text-secondary tabular-nums">0 / {DISCUSSION_BODY_MAX}</span>
+					<button
+						type="submit"
+						class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-[filter] hover:brightness-110 disabled:opacity-50"
+					>
+						토론 열기
+					</button>
+				</div>
+			</div>
+		</form>
+	</section>
+</BaseLayout>
+
+<script>
+	document.addEventListener("astro:page-load", () => {
+		const form = document.getElementById("discussion-form") as HTMLFormElement | null;
+		const title = document.getElementById("d-title") as HTMLInputElement | null;
+		const body = document.getElementById("d-body") as HTMLTextAreaElement | null;
+		const count = document.getElementById("d-count");
+		const error = document.getElementById("d-error");
+		if (!form || !title || !body) return;
+
+		const max = body.maxLength;
+		body.addEventListener("input", () => {
+			if (count) count.textContent = `${body.value.length} / ${max}`;
+		});
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const submit = form.querySelector<HTMLButtonElement>("button[type=submit]");
+			if (error) error.textContent = "";
+			if (submit) submit.disabled = true;
+
+			const res = await fetch("/api/discussions", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					title: title.value,
+					body: body.value,
+					issueId: form.dataset.issueId || null,
+				}),
+			}).catch(() => null);
+
+			const data = res ? await res.json().catch(() => null) : null;
+			if (!res?.ok || !data?.success) {
+				// 실패해도 쓴 내용은 남긴다 — 예전 댓글 폼에서 429를 먹고 본문이 사라진 적이 있다.
+				if (error) error.textContent = data?.error ?? "요청을 처리하지 못했습니다";
+				if (submit) submit.disabled = false;
+				return;
+			}
+			window.location.href = `/discuss/${data.id}`;
+		});
+	});
+</script>

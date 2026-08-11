@@ -22,7 +22,6 @@ export type { AuthUser } from "./user.js";
 export type {
 	CommentAuthor,
 	CommentDTO,
-	CommentOrigin,
 	CommentSort,
 	ReportReason,
 } from "./comment.js";

@@ -132,6 +132,11 @@ try {
 		);
 		// 비추천을 되살리면 여기서 걸린다
 		check("no downvote control in comment list", !(await page.locator("[data-comment-list]").innerText()).includes("▼"));
+		// 댓글은 기사 단위다. 이슈 단위로 묶었다가 되돌렸으므로(0013) 출처 라벨이 남으면 안 된다
+		check(
+			"no cross-article origin label on comments",
+			!/\S+에서\s/.test(await page.locator("[data-comment-list]").innerText()),
+		);
 
 		// 키워드 칩은 검색으로 이어져야 한다(예전엔 클릭 안 되는 span이었다)
 		const kwHref = await page
@@ -204,21 +209,19 @@ try {
 		"/discuss has its heading",
 		(await page.locator("main h2").first().innerText()).includes("토론"),
 	);
+	check("/discuss offers a way to open one", (await page.locator('a[href="/discuss/new"]').count()) > 0);
+	// 로그인해야 열 수 있다(메뉴를 숨기는 건 접근 제어가 아니다)
+	await page.goto(`${BASE}/discuss/new`, { waitUntil: "networkidle" });
+	check("/discuss/new requires login", page.url().includes("/login"), page.url());
 
 	if (clusters[0]?.issueId) {
 		await page.goto(`${BASE}/issue/${clusters[0].issueId}`, { waitUntil: "networkidle" });
 		check("/issue/:id lists member articles", (await page.locator("#article-list article").count()) > 0);
-		await page.waitForSelector("[data-comment-form-wrap] p, [data-comment-form-wrap] form", { timeout: 5000 });
-		// 기사 페이지와 같은 규범·같은 정렬 탭을 써야 한다(스코프 리팩터 회귀망)
+		// 이슈 페이지에는 댓글을 두지 않는다(0013에서 되돌렸다) — 대신 토론 시작 유도만 있다
+		check("issue page has no comment thread", (await page.locator("[data-comment-list]").count()) === 0);
 		check(
-			"issue page shows the same guideline notice",
-			(await page.locator("[data-comment-form-wrap]").innerText()).includes("서로 예의를 지키며"),
-		);
-		const issueSortTabs = await page.locator("[data-comment-sort] button").allInnerTexts();
-		check(
-			"issue page comment sort tabs match the article page",
-			JSON.stringify(issueSortTabs) === JSON.stringify(["화제순", "최신순", "추천순"]),
-			issueSortTabs.join(","),
+			"issue page invites a discussion instead",
+			(await page.locator('a[href^="/discuss/new"]').count()) > 0,
 		);
 	}
 

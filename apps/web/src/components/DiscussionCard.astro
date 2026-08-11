@@ -1,0 +1,47 @@
+---
+import { formatRelativeTime, getGradeByLevel, getLevel } from "@dansum/shared";
+import { getInitialAvatar } from "../lib/userAvatar";
+import type { DiscussionListItem } from "../lib/server/discussions";
+
+interface Props {
+	discussion: DiscussionListItem;
+}
+const { discussion: d } = Astro.props;
+const avatar = getInitialAvatar(d.author.id, d.author.nickname);
+const level = getLevel(d.author.exp);
+const grade = getGradeByLevel(level);
+---
+
+<article class="group -mx-4 px-4 py-4 transition-colors hover:bg-surface-alt">
+	<a href={`/discuss/${d.id}`} class="block">
+		<div class="flex items-center gap-2 text-[13px] text-text-secondary">
+			<span
+				class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+				style={`background-color:${avatar.color}`}
+				aria-hidden="true"
+			>
+				{avatar.initial}
+			</span>
+			<span>{d.author.nickname}</span>
+			{/* 초심자는 칩을 달지 않는다 — 모두가 달고 있으면 정보가 되지 않는다 */}
+			{grade.key !== "beginner" && (
+				<span class="text-[11px] font-semibold text-brand">Lv.{level} {grade.label}</span>
+			)}
+			<span class="tabular-nums">{formatRelativeTime(d.createdAt)}</span>
+		</div>
+
+		<h3 class="mt-1 font-semibold leading-snug text-text group-hover:text-brand transition-colors">
+			{d.title}
+		</h3>
+
+		{/* 추천에서 시작한 토론에만 붙는다 — 어떤 사건에 대한 이야기인지 한 줄로 남긴다 */}
+		{d.issueTitle && (
+			<p class="mt-1 truncate text-xs text-text-secondary">이슈 · {d.issueTitle}</p>
+		)}
+
+		<p class="mt-1 text-[13px] text-text-secondary tabular-nums">
+			{d.participants > 0 ? `${d.participants}명 참여 · 댓글 ${d.comments}` : "아직 댓글이 없어요"}
+			{d.score > 0 && ` · 추천 ${d.score}`}
+		</p>
+	</a>
+</article>

@@ -73,23 +73,17 @@ async function postJson<T = unknown>(
 	}
 }
 
-/**
- * 스레드 범위. 기사 페이지는 기사에서 출발하고(서버가 이슈로 환원), 이슈 페이지는 이슈에서
- * 출발한다. 어느 쪽이든 새 댓글은 `postTo` 기사에 기록된다 — 이슈에는 대표 기사가 있고,
- * 이슈 페이지는 origin 라벨을 렌더하지 않으므로 그 선택이 화면에 주장으로 드러나지 않는다.
- */
-export interface CommentScope {
-	articleId?: string;
-	issueId?: string;
-	/** 새 댓글을 어느 기사에 기록할지(= createComposer의 articleId) */
-	postTo: string;
+/** 댓글이 달리는 대상. 기사 하나이거나 토론 글 하나다. */
+export type CommentScope = { articleId: string } | { discussionId: string };
+
+function scopeQuery(scope: CommentScope): string {
+	return "articleId" in scope
+		? `articleId=${encodeURIComponent(scope.articleId)}`
+		: `discussionId=${encodeURIComponent(scope.discussionId)}`;
 }
 
 async function fetchComments(scope: CommentScope, sort: CommentSort): Promise<CommentDTO[]> {
-	const key = scope.issueId
-		? `issueId=${encodeURIComponent(scope.issueId)}`
-		: `articleId=${encodeURIComponent(scope.articleId ?? "")}`;
-	const res = await fetch(`/api/comments?${key}&sort=${sort}`);
+	const res = await fetch(`/api/comments?${scopeQuery(scope)}&sort=${sort}`);
 	if (!res.ok) return [];
 	const data = (await res.json()) as { comments?: CommentDTO[] };
 	return Array.isArray(data.comments) ? data.comments : [];
@@ -114,7 +108,7 @@ function goLogin(): void {
 /** 루트 폼과 답글 폼을 한 함수로 합친다. 예전엔 두 벌이 클래스까지 어긋난 채 중복돼 있어서
  *  가이드/글자수/에러/넛지를 넣으려면 같은 걸 두 번 써야 했다. */
 function createComposer(opts: {
-	articleId: string;
+	scope: CommentScope;
 	parentCommentId: string | null;
 	variant: "root" | "reply";
 	onPosted: () => void | Promise<void>;
@@ -221,7 +215,7 @@ function createComposer(opts: {
 		errorEl.textContent = "";
 
 		const result = await postJson("/api/comments", {
-			body: { articleId: opts.articleId, body: text, parentCommentId: opts.parentCommentId },
+			body: { ...opts.scope, body: text, parentCommentId: opts.parentCommentId },
 		});
 
 		sending = false;
@@ -351,15 +345,6 @@ function renderComment(
 		head.appendChild(el("span", "text-[11px] font-semibold text-brand", `Lv.${level} ${grade.label}`));
 	}
 	head.appendChild(el("span", "text-text-secondary text-xs", formatRelativeTime(c.createdAt)));
-
-	// 스레드는 이슈 단위라 여러 매체의 기사에서 온 댓글이 섞인다. 출처를 밝히되,
-	// **지금 보고 있는 기사와 다를 때만** 붙인다 — 5개 매체 스레드에서 전부에 라벨이 달리면
-	// 그건 모두가 다는 배지고, 정보가 아니라 소음이다. 이슈 페이지에서는 기준 기사가
-	// 없으므로(scope.articleId가 비어 있다) 아예 붙지 않는다.
-	// 기사 제목이 아니라 매체명만 쓴다(제목은 길고, 알고 싶은 건 "어느 매체에서"다).
-	if (scope.articleId && c.origin && c.origin.articleId !== scope.articleId) {
-		head.appendChild(el("span", "text-text-secondary text-xs", `${c.origin.sourceName}에서`));
-	}
 	body.appendChild(head);
 
 	// 가려진 댓글은 접어두되 지우지는 않는다 — 오탐일 수 있으니 직접 확인할 길은 남긴다.
@@ -488,7 +473,7 @@ function renderComment(
 
 	if (depth === 0 && c.status !== "deleted") {
 		replyForm = createComposer({
-			articleId: scope.postTo,
+			scope,
 			parentCommentId: c.id,
 			variant: "reply",
 			onPosted: refresh,
@@ -577,7 +562,7 @@ export async function mountComments(container: HTMLElement, scope: CommentScope)
 		formWrap.innerHTML = "";
 		if (isLoggedIn()) {
 			formWrap.appendChild(
-				createComposer({ articleId: scope.postTo, parentCommentId: null, variant: "root", onPosted: refresh }),
+				createComposer({ scope, parentCommentId: null, variant: "root", onPosted: refresh }),
 			);
 		} else {
 			// 비로그인에게도 규범을 먼저 보여준다 — 참여를 결정하기 전에 보여야 의미가 있다.

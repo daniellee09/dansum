@@ -1,24 +1,35 @@
 import { COMMENT_MAX_LENGTH, EXP_REWARDS, parseCommentSort } from "@dansum/shared";
 import type { APIRoute } from "astro";
 import { createComment, createReplyNotification, listComments } from "../../../lib/server/comments";
+import type { CommentTarget } from "../../../lib/server/comments";
 import { json, unauthorized } from "../../../lib/server/http";
 import { awardCommentCreated, awardExp } from "../../../lib/server/exp";
 
 const MAX_COMMENTS_PER_WINDOW = 10;
 const RATE_WINDOW_SECONDS = 60 * 5;
 
-// 스레드의 단위는 이슈다. 기사 페이지는 articleId로(서버가 이슈로 환원), 이슈 페이지는
-// issueId로 부른다. 쓰기(POST)는 여전히 articleId만 받는다 — 아래 주석 참고.
+/** 댓글은 기사 하나 또는 토론 글 하나에 달린다. 한때 이슈 단위로 묶었지만 되돌렸다. */
+function parseTarget(articleId: string | null, discussionId: string | null): CommentTarget | null {
+	if (articleId && !discussionId) return { articleId };
+	if (discussionId && !articleId) return { discussionId };
+	return null;
+}
+
 export const GET: APIRoute = async ({ url, locals }) => {
-	const articleId = url.searchParams.get("articleId");
-	const issueId = url.searchParams.get("issueId");
-	if (!articleId && !issueId) {
-		return json({ success: false, error: "articleId 또는 issueId가 필요합니다" }, { status: 400 });
+	const target = parseTarget(
+		url.searchParams.get("articleId"),
+		url.searchParams.get("discussionId"),
+	);
+	if (!target) {
+		return json(
+			{ success: false, error: "articleId 또는 discussionId 중 하나가 필요합니다" },
+			{ status: 400 },
+		);
 	}
 	const sort = parseCommentSort(url.searchParams.get("sort"));
 	const comments = await listComments(
 		locals.runtime.env.DB,
-		issueId ? { issueId } : { articleId: articleId as string },
+		target,
 		locals.user?.id ?? null,
 		sort,
 	);
@@ -28,19 +39,27 @@ export const GET: APIRoute = async ({ url, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
 	if (!locals.user) return unauthorized();
 
-	let body: { articleId?: string; parentCommentId?: string | null; body?: string };
+	let body: {
+		articleId?: string;
+		discussionId?: string;
+		parentCommentId?: string | null;
+		body?: string;
+	};
 	try {
 		body = await request.json();
 	} catch {
 		return json({ success: false, error: "잘못된 요청입니다" }, { status: 400 });
 	}
 
-	// 쓰기는 articleId만 받는다. issue_id는 createComment가 기사에서 파생한다 —
-	// 클라이언트가 그룹핑 키를 직접 정하게 두면 위조 가능하고 진실의 출처가 둘이 된다.
-	const articleId = body.articleId;
+	const target = parseTarget(body.articleId ?? null, body.discussionId ?? null);
 	const parentCommentId = body.parentCommentId ?? null;
 	const text = body.body?.trim() ?? "";
-	if (!articleId) return json({ success: false, error: "articleId가 필요합니다" }, { status: 400 });
+	if (!target) {
+		return json(
+			{ success: false, error: "articleId 또는 discussionId 중 하나가 필요합니다" },
+			{ status: 400 },
+		);
+	}
 	if (text.length === 0 || text.length > COMMENT_MAX_LENGTH) {
 		return json(
 			{ success: false, error: `댓글은 1~${COMMENT_MAX_LENGTH}자여야 합니다` },
@@ -60,7 +79,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	const result = await createComment(DB, {
-		articleId,
+		target,
 		userId: locals.user.id,
 		parentCommentId,
 		body: text,
@@ -80,7 +99,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		await awardExp(DB, result.notifyUserId, EXP_REWARDS.replyReceived, "reply_received", "comment", result.id);
 		await createReplyNotification(DB, {
 			toUserId: result.notifyUserId,
-			articleId,
+			articleId: "articleId" in target ? target.articleId : null,
+			discussionId: "discussionId" in target ? target.discussionId : null,
 			commentId: result.id,
 			fromNickname: locals.user.nickname,
 		});

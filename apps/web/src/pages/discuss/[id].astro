@@ -1,0 +1,116 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { formatRelativeTime, getGradeByLevel, getLevel } from "@dansum/shared";
+import { getDiscussion } from "../../lib/server/discussions";
+import { getInitialAvatar } from "../../lib/userAvatar";
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/discuss");
+
+const viewer = Astro.locals.user;
+const d = await getDiscussion(Astro.locals.runtime.env.DB, id, viewer?.id ?? null);
+// 없거나 지워진 글은 404. 리다이렉트하면 "있었는데 옮겨졌다"로 읽힌다.
+if (!d || d.status === "deleted") return new Response("Not found", { status: 404 });
+
+const avatar = getInitialAvatar(d.author.id, d.author.nickname);
+const level = getLevel(d.author.exp);
+const grade = getGradeByLevel(level);
+---
+
+<BaseLayout title={`${d.title} - 단숨`} description={d.body.slice(0, 120)}>
+	<section class="max-w-[46rem]">
+		<div class="flex items-center gap-2 text-[13px] text-text-secondary">
+			<span
+				class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+				style={`background-color:${avatar.color}`}
+				aria-hidden="true"
+			>
+				{avatar.initial}
+			</span>
+			<span>{d.author.nickname}</span>
+			{grade.key !== "beginner" && (
+				<span class="text-[11px] font-semibold text-brand">Lv.{level} {grade.label}</span>
+			)}
+			<span class="tabular-nums">{formatRelativeTime(d.createdAt)}</span>
+		</div>
+
+		<h2 class="mt-1.5 text-xl font-bold leading-snug tracking-tight">{d.title}</h2>
+
+		{d.issueId && (
+			<a
+				href={`/issue/${d.issueId}`}
+				class="mt-2 inline-block text-[13px] text-text-secondary hover:text-brand transition-colors"
+			>
+				이슈 · {d.issueTitle ?? "관련 보도 보기"} →
+			</a>
+		)}
+
+		<div class="mt-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed">{d.body}</div>
+
+		<div class="mt-5 flex items-center gap-3 border-b border-border pb-5">
+			{/* 추천만 있고 비추천은 없다(0008에서 폐지) — 반대는 댓글로, 규칙 위반은 신고로 간다 */}
+			<button
+				type="button"
+				id="d-vote"
+				data-discussion-id={d.id}
+				aria-pressed={String(d.viewerUpvoted)}
+				class="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-alt aria-pressed:border-brand aria-pressed:text-brand"
+			>
+				▲ <span id="d-score" class="tabular-nums">{d.score}</span>
+			</button>
+			{d.isOwner && (
+				<button
+					type="button"
+					id="d-delete"
+					data-discussion-id={d.id}
+					class="text-sm text-text-secondary transition-colors hover:text-hot"
+				>
+					삭제
+				</button>
+			)}
+		</div>
+
+		<!-- 댓글: 기사와 같은 모듈을 그대로 쓴다(추천·신고·삭제·경험치가 모두 붙어 있다) -->
+		<div class="mt-6" data-comments data-discussion-id={d.id}>
+			<h3 class="text-base font-bold mb-4">
+				댓글 <span data-comment-count>0</span>
+			</h3>
+			<div data-comment-form-wrap class="mb-6"></div>
+			<div data-comment-list></div>
+		</div>
+	</section>
+</BaseLayout>
+
+<script>
+	import { mountComments } from "../../lib/comments";
+
+	document.addEventListener("astro:page-load", () => {
+		const root = document.querySelector<HTMLElement>("[data-comments]");
+		const discussionId = root?.dataset.discussionId;
+		if (root && discussionId) mountComments(root, { discussionId });
+
+		const vote = document.getElementById("d-vote");
+		const score = document.getElementById("d-score");
+		vote?.addEventListener("click", async () => {
+			const res = await fetch(`/api/discussions/${vote.dataset.discussionId}/vote`, {
+				method: "POST",
+			}).catch(() => null);
+			if (res?.status === 401) {
+				window.location.href = `/login?redirect=${encodeURIComponent(location.pathname)}`;
+				return;
+			}
+			const data = res ? await res.json().catch(() => null) : null;
+			if (!data?.success) return;
+			// 목록을 다시 그리지 않고 제자리에서만 바꾼다(댓글 추천과 같은 규칙)
+			vote.setAttribute("aria-pressed", String(data.upvoted));
+			if (score) score.textContent = String(data.score);
+		});
+
+		const del = document.getElementById("d-delete");
+		del?.addEventListener("click", async () => {
+			if (!confirm("이 토론을 삭제할까요?")) return;
+			const res = await fetch(`/api/discussions/${del.dataset.discussionId}`, { method: "DELETE" });
+			if (res.ok) window.location.href = "/discuss";
+		});
+	});
+</script>
