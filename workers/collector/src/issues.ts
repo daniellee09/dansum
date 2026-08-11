@@ -23,6 +23,8 @@ import {
 export interface IssueCandidate {
 	id: string;
 	matchKeywords: Set<string>;
+	/** 이 이슈의 가장 최근 기사 시각(ms). 흡수 창 판정에 쓴다. */
+	lastPublishedMs: number;
 }
 
 export interface IncomingArticle {
@@ -43,17 +45,25 @@ export interface IssueAssignment {
 export async function loadOpenIssues(db: D1Database, limit = 400): Promise<IssueCandidate[]> {
 	const { results } = await db
 		.prepare(
-			`SELECT id, match_keywords FROM issues
+			`SELECT id, match_keywords, last_published_at FROM issues
 			 WHERE last_published_at >= datetime('now', ?)
 			 ORDER BY last_published_at DESC LIMIT ?`,
 		)
 		.bind(`-${ISSUE_ABSORB_WINDOW_HOURS} hours`, limit)
-		.all<{ id: string; match_keywords: string }>();
+		.all<{ id: string; match_keywords: string; last_published_at: string | null }>();
 
 	return results.map((r) => ({
 		id: r.id,
 		matchKeywords: new Set(safeParseKeywords(r.match_keywords)),
+		lastPublishedMs: toMs(r.last_published_at),
 	}));
+}
+
+/** SQLite datetime('now') 형식("YYYY-MM-DD HH:MM:SS")과 ISO를 모두 받는다. */
+function toMs(value: string | null): number {
+	if (!value) return 0;
+	const t = Date.parse(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
+	return Number.isNaN(t) ? 0 : t;
 }
 
 function safeParseKeywords(json: string): string[] {
@@ -90,13 +100,21 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 		keywordSets.length,
 	);
 
+	const absorbWindowMs = ISSUE_ABSORB_WINDOW_HOURS * 3_600_000;
+
 	const assignments: IssueAssignment[] = [];
 	ordered.forEach((article, i) => {
 		const kw = keywordSets[i];
+		const articleMs = toMs(article.publishedAt);
 
 		let matched: IssueCandidate | undefined;
 		if (kw.size > 0) {
 			matched = open.find((c) => {
+				// 흡수 창은 '지금'이 아니라 '이 기사와 그 이슈의 마지막 기사' 사이로 재야 한다.
+				// loadOpenIssues의 now 기준 필터만 믿으면, 백필로 6월 기사를 처리할 때 후보에는
+				// "마지막 기사가 어제인 이슈"가 들어 있어 두 달 떨어진 기사가 한 이슈가 된다
+				// (운영에서 실제로 6/18~8/10에 걸친 95건짜리 이슈가 생겼다).
+				if (Math.abs(articleMs - c.lastPublishedMs) > absorbWindowMs) return false;
 				const shared = sharedKeywords(kw, c.matchKeywords);
 				if (shared.length < MIN_SHARED_KEYWORDS) return false;
 				// 공유한 게 전부 상투어면 잇지 않는다 — 최소 하나는 이 사건만의 말이어야 한다.
@@ -105,6 +123,7 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 		}
 
 		if (matched) {
+			matched.lastPublishedMs = Math.max(matched.lastPublishedMs, articleMs);
 			assignments.push({ articleId: article.articleId, issueId: matched.id });
 			return;
 		}
@@ -112,7 +131,11 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 		// 붙을 데가 없으면 단독 이슈로 창설한다. 키워드가 없는 기사도 여기로 오는데,
 		// 빈 집합은 무엇과도 MIN_SHARED_KEYWORDS를 넘길 수 없어 남을 흡수하지 못한다(의도된 것).
 		const frozen = [...kw].slice(0, ISSUE_MATCH_KEYWORD_MAX);
-		const created: IssueCandidate = { id: crypto.randomUUID(), matchKeywords: new Set(frozen) };
+		const created: IssueCandidate = {
+			id: crypto.randomUUID(),
+			matchKeywords: new Set(frozen),
+			lastPublishedMs: articleMs,
+		};
 		open.unshift(created);
 		assignments.push({ articleId: article.articleId, issueId: created.id, createdWith: frozen });
 	});
