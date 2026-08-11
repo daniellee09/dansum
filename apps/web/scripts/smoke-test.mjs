@@ -155,6 +155,10 @@ try {
 		);
 		// 비추천을 되살리면 여기서 걸린다
 		check("no downvote control in comment list", !(await page.locator("[data-comment-list]").innerText()).includes("▼"));
+
+		// 새 댓글 알림 줄: 자리는 항상 있고, 새 글이 없으면 보이지 않아야 한다.
+		// (실제로 뜨는지는 폴링 30초가 필요해 여기서 다루지 않는다 — 스위트를 느리게 만들 값어치가 없다.)
+		check("new-comment banner exists but stays hidden when nothing is new", (await page.locator("[data-new-comments]").count()) === 1 && !(await page.locator("[data-new-comments]").isVisible()));
 		// 댓글은 기사 단위다. 이슈 단위로 묶었다가 되돌렸으므로(0013) 출처 라벨이 남으면 안 된다
 		check(
 			"no cross-article origin label on comments",

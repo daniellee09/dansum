@@ -8,6 +8,9 @@
  * 재렌더 정책: 작성/삭제만 목록을 다시 불러온다. 추천·신고는 제자리 패치다 —
  * 화제순에선 추천 한 번에 순위가 바뀌어 커서 밑에서 댓글이 튀고, 열어둔 답글 폼과
  * 펼쳐보기가 전부 닫히기 때문이다.
+ *
+ * 남의 새 댓글도 같은 이유로 **자동으로 끼워넣지 않는다**. 조용히 확인만 하고
+ * "새 댓글 N개" 버튼을 띄운 뒤, 반영 시점은 읽는 사람이 고르게 한다(§실시간 반영).
  */
 
 import type { CommentDTO, CommentSort, ReportReason } from "@dansum/shared";
@@ -26,9 +29,24 @@ import { getInitialAvatar } from "./userAvatar";
 
 const GUIDELINES = [
 	"서로 예의를 지키며 댓글을 남겨주세요",
-	// 스레드가 이슈 단위라 여러 매체의 기사가 한 곳에 모인다 — "기사"가 아니라 "주제"가 맞다.
+	// 기사와 토론이 같은 모듈을 쓰므로 "기사"라고 못 박지 않는다.
 	"이 주제와 관련된 내용으로 작성해주세요",
 ];
+
+// ── 실시간 반영 ────────────────────────────────────────────────
+//
+// 웹소켓(Durable Objects)을 쓰지 않는다. 지금 규모에서 스레드 하나에 상시 연결을 유지할
+// 이유가 없고, 얻는 것은 "30초 빠름"뿐이다. 대신 조용한 폴링으로 새 댓글이 있는지만 보고,
+// 화면을 다시 그리는 시점은 읽는 사람이 고른다.
+//
+// 폴링이 새는 것을 막는 장치 셋:
+//  1) 숨은 탭에서는 건너뛴다(백그라운드 탭 수십 개가 계속 두드리지 않게)
+//  2) 마지막 활동에서 POLL_IDLE_STOP_MS가 지나면 아예 멈춘다 — 밤새 열어둔 탭이
+//     영원히 요청을 보내는 게 이 방식의 진짜 위험이다. 돌아오면 다시 시작한다.
+//  3) 페이지를 떠날 때(astro:before-swap) 반드시 정리한다. 안 하면 클라이언트 라우팅으로
+//     이동할 때마다 죽은 DOM을 붙잡은 타이머가 하나씩 쌓인다.
+const POLL_INTERVAL_MS = 30_000;
+const POLL_IDLE_STOP_MS = 5 * 60_000;
 
 const REPLY_GUIDELINE = "예의를 지키며 주제와 관련된 답글을 남겨주세요";
 
@@ -97,6 +115,17 @@ function countAll(comments: CommentDTO[]): number {
 		n += c.replies.filter((r) => !r.isHidden).length;
 	}
 	return n;
+}
+
+/** 답글까지 포함한 모든 댓글 id. "무엇이 새로 생겼나"를 세는 기준이다 — 개수 비교로는
+ *  누가 하나 지우고 누가 하나 쓴 경우(증감 0)를 놓친다. */
+function allCommentIds(comments: CommentDTO[]): Set<string> {
+	const ids = new Set<string>();
+	for (const c of comments) {
+		ids.add(c.id);
+		for (const r of c.replies) ids.add(r.id);
+	}
+	return ids;
 }
 
 function goLogin(): void {
@@ -502,9 +531,11 @@ export async function mountComments(container: HTMLElement, scope: CommentScope)
 	if (!listEl) return;
 
 	let sort: CommentSort = DEFAULT_COMMENT_SORT;
+	/** 지금 화면에 그려져 있는 것. 폴링이 "새 것"을 판별하는 기준선이다. */
+	let shownIds = new Set<string>();
 
-	const refresh = async () => {
-		const comments = await fetchComments(scope, sort);
+	const render = (comments: CommentDTO[]) => {
+		shownIds = allCommentIds(comments);
 		if (countEl) countEl.textContent = String(countAll(comments));
 		listEl.innerHTML = "";
 		if (comments.length === 0) {
@@ -527,6 +558,12 @@ export async function mountComments(container: HTMLElement, scope: CommentScope)
 		const wrap = el("div", "divide-y divide-border");
 		for (const c of comments) wrap.appendChild(renderComment(c, scope, 0, refresh));
 		listEl.appendChild(wrap);
+	};
+
+	const refresh = async () => {
+		render(await fetchComments(scope, sort));
+		hideNewBanner();
+		markActive();
 	};
 
 	// 정렬 탭(기본 화제순). SortTabs.astro와 같은 밑줄 탭 시각 언어를 쓰되, 여기는
@@ -557,6 +594,91 @@ export async function mountComments(container: HTMLElement, scope: CommentScope)
 	});
 	syncTabStyles();
 	listEl.before(sortBar);
+
+	// ── 새 댓글 알림 줄 ────────────────────────────────────────
+	// 목록 바로 위에 끼운다. 화면에 고정하지 않는다 — 스레드에서 벌어진 일이니 스레드 안에
+	// 있어야 하고, 떠 있는 배너는 읽는 동안 계속 시야에 걸린다.
+	const newBanner = el("button", "hidden");
+	newBanner.type = "button";
+	newBanner.dataset.newComments = "";
+	/** 폴링이 미리 받아둔 최신 목록. 버튼을 누르면 재요청 없이 이걸 그대로 그린다. */
+	let pending: CommentDTO[] | null = null;
+	const paintBanner = (n: number) => {
+		newBanner.className =
+			"mb-3 block w-full rounded-md border border-brand/30 bg-brand/5 px-3 py-2 text-[13px] font-semibold text-brand transition-colors hover:bg-brand/10 dark:bg-brand/10";
+		newBanner.textContent = `새 댓글 ${n}개 보기`;
+	};
+	function hideNewBanner(): void {
+		pending = null;
+		newBanner.className = "hidden";
+		newBanner.textContent = "";
+	}
+	newBanner.addEventListener("click", () => {
+		if (!pending) return;
+		// 여기서 정렬을 다시 태우지 않는다. 서버가 준 순서 그대로 그려야 화제순에서
+		// 방금 읽던 댓글이 엉뚱한 데로 튀지 않는다.
+		render(pending);
+		hideNewBanner();
+		markActive();
+	});
+	listEl.before(newBanner);
+
+	// ── 폴링 ──────────────────────────────────────────────────
+	let pollTimer: number | undefined;
+	let lastActiveMs = Date.now();
+
+	function startPolling(): void {
+		if (pollTimer === undefined) pollTimer = window.setInterval(tick, POLL_INTERVAL_MS);
+	}
+	function stopPolling(): void {
+		if (pollTimer !== undefined) window.clearInterval(pollTimer);
+		pollTimer = undefined;
+	}
+	function markActive(): void {
+		lastActiveMs = Date.now();
+		startPolling();
+	}
+
+	async function tick(): Promise<void> {
+		if (document.visibilityState !== "visible") return;
+		if (Date.now() - lastActiveMs > POLL_IDLE_STOP_MS) {
+			stopPolling();
+			return;
+		}
+		const fresh = await fetchComments(scope, sort);
+		// 빈 배열은 "댓글이 사라졌다"가 아니라 요청 실패일 수 있다(fetchComments가 []로 삼킨다).
+		// 이미 그려둔 게 있는데 빈 응답이 오면 아무것도 하지 않는다.
+		if (fresh.length === 0 && shownIds.size > 0) return;
+		let added = 0;
+		for (const id of allCommentIds(fresh)) if (!shownIds.has(id)) added += 1;
+		if (added === 0) {
+			// 삭제만 일어났을 수도 있다. 그건 버튼을 띄울 일이 아니라 다음 렌더에 자연히 반영된다.
+			hideNewBanner();
+			return;
+		}
+		pending = fresh;
+		paintBanner(added);
+	}
+
+	// 탭으로 돌아오면 멈춰 있던 폴링을 되살리고 즉시 한 번 확인한다(30초를 기다리게 하지 않는다).
+	const onVisibility = () => {
+		if (document.visibilityState !== "visible") return;
+		markActive();
+		void tick();
+	};
+	document.addEventListener("visibilitychange", onVisibility);
+	// 스레드를 만지는 동안은 계속 살아 있게 한다(위 2번 장치의 '활동' 정의).
+	container.addEventListener("pointerdown", markActive);
+	container.addEventListener("keydown", markActive);
+
+	document.addEventListener(
+		"astro:before-swap",
+		() => {
+			stopPolling();
+			document.removeEventListener("visibilitychange", onVisibility);
+		},
+		{ once: true },
+	);
 
 	if (formWrap) {
 		formWrap.innerHTML = "";
