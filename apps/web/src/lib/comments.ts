@@ -584,6 +584,20 @@ export async function mountComments(container: HTMLElement, scope: CommentScope)
 	const formWrap = container.querySelector<HTMLElement>("[data-comment-form-wrap]");
 	if (!listEl) return;
 
+	// 같은 DOM에 두 번 마운트하지 않는다.
+	//
+	// astro:page-load는 한 화면에서 두 번 올 수 있다. 대표적인 경우가 탭을 열어둔 채 새 버전이
+	// 배포됐을 때다 — 클라이언트 라우팅으로 옮겨가면 구/신 페이지 모듈이 둘 다 살아 있어
+	// 리스너가 두 벌 등록된다. 그러면 이 함수가 listEl.before(...)로 끼워 넣는 정렬 탭과
+	// 새 댓글 줄이 두 개씩 생기고(실제로 보고됨), 폴링 타이머도 둘이 돌면서 그중 하나는
+	// astro:before-swap 정리({ once: true })를 받지 못해 그대로 샌다.
+	//
+	// "리스너가 정확히 한 번만 등록된다"에 기대지 않는다. 그건 브라우저 모듈 캐시와 배포
+	// 시점에 달린 일이라 이 컴포넌트가 보장할 수 있는 게 아니다. 화면이 바뀌면 컨테이너
+	// 자체가 새로 생기므로 이 표시도 함께 사라진다.
+	if (container.dataset.commentsMounted) return;
+	container.dataset.commentsMounted = "true";
+
 	let sort: CommentSort = DEFAULT_COMMENT_SORT;
 	/** 지금 화면에 그려져 있는 것. 폴링이 "새 것"을 판별하는 기준선이다. */
 	let shownIds = new Set<string>();

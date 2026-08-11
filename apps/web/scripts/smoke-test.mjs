@@ -156,6 +156,17 @@ try {
 		// 비추천을 되살리면 여기서 걸린다
 		check("no downvote control in comment list", !(await page.locator("[data-comment-list]").innerText()).includes("▼"));
 
+		// 같은 화면에 두 번 마운트되면 정렬 탭이 두 벌 생긴다(실제로 보고된 버그).
+		// astro:page-load가 한 번 더 오는 상황을 그대로 흉내 내서 막혔는지 본다.
+		await page.evaluate(() => document.dispatchEvent(new Event("astro:page-load")));
+		await page.waitForTimeout(800);
+		check(
+			"comments do not mount twice on a repeated astro:page-load",
+			(await page.locator("[data-comment-sort]").count()) === 1 &&
+				(await page.locator("[data-new-comments]").count()) === 1,
+			`sort=${await page.locator("[data-comment-sort]").count()}, banner=${await page.locator("[data-new-comments]").count()}`,
+		);
+
 		// 새 댓글 알림 줄: 자리는 항상 있고, 새 글이 없으면 보이지 않아야 한다.
 		// (실제로 뜨는지는 폴링 30초가 필요해 여기서 다루지 않는다 — 스위트를 느리게 만들 값어치가 없다.)
 		check("new-comment banner exists but stays hidden when nothing is new", (await page.locator("[data-new-comments]").count()) === 1 && !(await page.locator("[data-new-comments]").isVisible()));
