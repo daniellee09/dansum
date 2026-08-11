@@ -316,9 +316,17 @@ export async function voteComment(
 	userId: string,
 ): Promise<{ ok: true; score: number; upvoted: boolean } | { ok: false; error: string }> {
 	const comment = await db
-		.prepare("SELECT user_id, status, hidden_at FROM comments WHERE id = ?")
+		.prepare(
+			"SELECT user_id, status, hidden_at, article_id, discussion_id FROM comments WHERE id = ?",
+		)
 		.bind(commentId)
-		.first<{ user_id: string; status: string; hidden_at: string | null }>();
+		.first<{
+			user_id: string;
+			status: string;
+			hidden_at: string | null;
+			article_id: string | null;
+			discussion_id: string | null;
+		}>();
 	if (!comment) return { ok: false, error: "댓글을 찾을 수 없습니다" };
 	// 지금까지 status를 안 봐서 삭제된 댓글에도 투표가 되고 카르마까지 적립됐다.
 	if (comment.status === "deleted") return { ok: false, error: "삭제된 댓글입니다" };
@@ -368,6 +376,20 @@ export async function voteComment(
 		commentId,
 	);
 
+	// 경험치와 같은 자리에서 알린다 — 둘 다 "추천을 받았다"는 한 사건의 결과라 떨어져 있으면
+	// 한쪽만 고치는 일이 생긴다. 취소일 때는 아무것도 하지 않는다(위 주석 참고).
+	if (upvoted) {
+		await createUpvoteNotification(db, {
+			toUserId: comment.user_id,
+			targetType: "comment",
+			targetId: commentId,
+			score,
+			articleId: comment.article_id,
+			discussionId: comment.discussion_id,
+			commentId,
+		});
+	}
+
 	return { ok: true, score, upvoted };
 }
 
@@ -375,7 +397,7 @@ export async function voteComment(
 
 export interface NotificationDTO {
 	id: string;
-	/** 'reply' | 'discussion_comment' | 'keyword'. 렌더는 lib/notifications.ts가 분기한다. */
+	/** 'reply' | 'discussion_comment' | 'upvote' | 'keyword'. 렌더는 lib/notifications.ts가 분기한다. */
 	type: string;
 	payload: {
 		articleId: string;
@@ -385,12 +407,57 @@ export interface NotificationDTO {
 		fromNickname?: string;
 		/** 토론 답글이면 채워진다(기사 답글이면 articleId가 채워진다) */
 		discussionId?: string | null;
+		/** upvote 전용 */
+		targetType?: "comment" | "discussion";
+		score?: number;
 		/** keyword 전용 */
 		issueId?: string;
 		keyword?: string;
 	};
 	isRead: boolean;
 	createdAt: string;
+}
+
+/**
+ * 추천 알림. **글 하나당 알림도 하나다** — 추천 스무 번에 종이 스무 번 울리면 알림함이
+ * 못 쓰게 된다. 그래서 id를 `upvote:<종류>:<대상id>`로 못 박고 같은 행을 갱신한다:
+ * 누적 수만 올라가고, 다시 안 읽음으로 바뀌면서 목록 맨 위로 올라온다.
+ * 받는 사람은 언제나 그 글의 주인 한 명뿐이라 이 id는 유일하다.
+ *
+ * 추천을 취소해도 숫자를 내리지 않는다. 알림함의 목적은 "무슨 일이 있었는지"를 알리는
+ * 것이지 점수판이 아니고, 취소 때문에 종이 울리면 더 이상하다. 다음 추천 때 맞춰진다.
+ */
+export async function createUpvoteNotification(
+	db: D1Database,
+	params: {
+		toUserId: string;
+		targetType: "comment" | "discussion";
+		targetId: string;
+		score: number;
+		/** 아래 셋은 알림을 눌렀을 때 어디로 갈지와 제목 조인에 쓴다(createCommentNotification과 같은 규칙). */
+		articleId: string | null;
+		discussionId: string | null;
+		commentId: string | null;
+	},
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO notifications (id, user_id, type, payload) VALUES (?, ?, 'upvote', ?)
+			 ON CONFLICT(id) DO UPDATE SET
+			   payload = excluded.payload, is_read = 0, created_at = datetime('now')`,
+		)
+		.bind(
+			`upvote:${params.targetType}:${params.targetId}`,
+			params.toUserId,
+			JSON.stringify({
+				targetType: params.targetType,
+				score: params.score,
+				articleId: params.articleId,
+				discussionId: params.discussionId,
+				commentId: params.commentId,
+			}),
+		)
+		.run();
 }
 
 export async function createCommentNotification(

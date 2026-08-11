@@ -1,6 +1,7 @@
 import { EXP_REWARDS } from "@dansum/shared";
 import type { APIRoute } from "astro";
 import { awardExp } from "../../../../lib/server/exp";
+import { createUpvoteNotification } from "../../../../lib/server/comments";
 import { toggleDiscussionVote } from "../../../../lib/server/discussions";
 import { json, unauthorized } from "../../../../lib/server/http";
 
@@ -21,6 +22,18 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	if (author) {
 		const delta = result.upvoted ? EXP_REWARDS.commentUpvoted : -EXP_REWARDS.commentUpvoted;
 		await awardExp(DB, author.user_id, delta, "comment_upvoted", "discussion", id);
+		// 알림은 받았을 때만. 글 하나당 한 행을 갱신하므로 추천이 쌓여도 종은 한 번만 울린다.
+		if (result.upvoted) {
+			await createUpvoteNotification(DB, {
+				toUserId: author.user_id,
+				targetType: "discussion",
+				targetId: id,
+				score: result.score,
+				articleId: null,
+				discussionId: id,
+				commentId: null,
+			});
+		}
 	}
 
 	return json({ success: true, score: result.score, upvoted: result.upvoted });

@@ -37,7 +37,7 @@ function href(n: (typeof notifications)[number]): string {
 			<div class="py-16 text-center">
 				<p class="text-sm text-text-secondary">아직 알림이 없습니다.</p>
 				<p class="mt-1 text-xs text-text-secondary">
-					답글이 달리거나, 회원님이 연 토론에 댓글이 달리면 여기로 알려드려요.
+					답글이 달리거나, 회원님의 글이 추천을 받으면 여기로 알려드려요.
 				</p>
 			</div>
 		) : (
@@ -55,6 +55,11 @@ function href(n: (typeof notifications)[number]): string {
 							<p class="text-sm text-text">
 								{n.type === "keyword" ? (
 									<><span class="font-semibold">{n.payload.keyword}</span> 관련 새 이슈가 올라왔습니다</>
+								) : n.type === "upvote" ? (
+									/* 추천한 사람은 밝히지 않는다(lib/notifications.ts와 같은 규칙).
+									   한 줄로 붙여 쓴다 — 줄바꿈하면 </span>과 "을" 사이에 공백이 끼어
+									   "회원님의 토론 을"로 렌더된다. */
+									<><span class="font-semibold">{n.payload.targetType === "discussion" ? "회원님의 토론" : "회원님의 댓글"}</span>을 {n.payload.score ?? 1}명이 추천했습니다</>
 								) : n.type === "discussion_comment" ? (
 									<><span class="font-semibold">{n.payload.fromNickname}</span>님이 회원님의 토론에 댓글을 남겼습니다</>
 								) : (

@@ -5,7 +5,7 @@ import { isLoggedIn } from "./auth";
 
 interface NotificationDTO {
 	id: string;
-	/** 'reply' | 'keyword' */
+	/** 'reply' | 'discussion_comment' | 'upvote' | 'keyword' */
 	type: string;
 	payload: {
 		articleId: string;
@@ -13,6 +13,8 @@ interface NotificationDTO {
 		commentId?: string;
 		fromNickname?: string;
 		discussionId?: string | null;
+		targetType?: "comment" | "discussion";
+		score?: number;
 		issueId?: string;
 		keyword?: string;
 	};
@@ -41,6 +43,10 @@ export function notificationHeadline(n: NotificationDTO): HTMLElement {
 	if (n.type === "keyword") {
 		strong.textContent = n.payload.keyword ?? "";
 		line.append(strong, " 관련 새 이슈가 올라왔습니다");
+	} else if (n.type === "upvote") {
+		// 누가 눌렀는지는 밝히지 않는다 — 추천은 익명이고, 이름을 붙이면 되갚기가 시작된다.
+		strong.textContent = n.payload.targetType === "discussion" ? "회원님의 토론" : "회원님의 댓글";
+		line.append(strong, `을 ${n.payload.score ?? 1}명이 추천했습니다`);
 	} else if (n.type === "discussion_comment") {
 		strong.textContent = n.payload.fromNickname ?? "";
 		line.append(strong, "님이 회원님의 토론에 댓글을 남겼습니다");
