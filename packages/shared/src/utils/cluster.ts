@@ -12,17 +12,36 @@ export function normalizeKeyword(k: string): string {
 		.replace(/[\s·().,"'“”\-_/]/g, "");
 }
 
-/** 두 정규화 키워드 집합의 공통 개수 */
-export function sharedCount(a: Set<string>, b: Set<string>): number {
-	let n = 0;
+/** 두 정규화 키워드 집합의 공통 원소. 개수만이 아니라 '무엇이' 겹쳤는지도 판정에 쓴다
+ *  (아래 COMMON_KEYWORD_ISSUE_COUNT 참고). */
+export function sharedKeywords(a: Set<string>, b: Set<string>): string[] {
+	const out: string[] = [];
 	for (const k of a) {
-		if (b.has(k)) n++;
+		if (b.has(k)) out.push(k);
 	}
-	return n;
+	return out;
 }
 
 /** 같은 사건으로 보려면 최소 이만큼의 키워드를 공유해야 한다. */
 export const MIN_SHARED_KEYWORDS = 2;
+
+/**
+ * 이 개수 이상의 서로 다른 이슈가 매칭 집합에 갖고 있는 키워드는 '상투어'로 본다.
+ * 상투어만으로는 두 기사를 잇지 못한다 — 공유 키워드 중 최소 하나는 드문 말이어야 한다.
+ *
+ * 왜 필요한가: 키워드 동결(ISSUE_MATCH_KEYWORD_MAX)은 이슈가 무한히 커지는 것을 막지만,
+ * 상투어가 '연결자'로 쓰이는 것은 못 막는다. 운영 데이터에서 "2분기실적"이 72시간에 191번,
+ * "조정ebitda"가 44번 나온다. MIN_SHARED_KEYWORDS=2에서는 이 둘만 겹쳐도 식스플래그스와
+ * Warrior Met Coal이 한 이슈가 된다(실제로 그렇게 묶였다).
+ *
+ * 임계값을 왜 이 방향으로 풀었나: MIN_SHARED_KEYWORDS를 3으로 올리는 게 더 단순하지만,
+ * 같은 데이터에서 교차매체 이슈가 26개 → 3개로 무너진다. "여러 매체가 함께 보도한 이슈"가
+ * 제품의 핵심인데 그걸 죽이는 셈이다. 이 필터는 교차매체 26 → 24만 잃으면서 최대 이슈를
+ * 27건 → 14건으로 줄이고, 홈 화면(30시간 창)에는 아무 변화도 주지 않는다.
+ *
+ * 빈도는 별도 테이블이나 추가 조회 없이, 이미 로드한 열린 이슈들의 match_keywords에서 센다.
+ */
+export const COMMON_KEYWORD_ISSUE_COUNT = 6;
 
 /**
  * 이슈 하나가 보관하는 매칭 키워드 상한. LLM이 기사당 3~6개를 뽑으므로 8이면 넉넉하다.

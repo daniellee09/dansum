@@ -11,10 +11,11 @@
  */
 
 import {
+	COMMON_KEYWORD_ISSUE_COUNT,
 	ISSUE_ABSORB_WINDOW_HOURS,
 	ISSUE_MATCH_KEYWORD_MAX,
 	MIN_SHARED_KEYWORDS,
-	sharedCount,
+	sharedKeywords,
 	toKeywordSet,
 } from "@dansum/shared";
 
@@ -79,13 +80,26 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 		(a.publishedAt ?? "").localeCompare(b.publishedAt ?? ""),
 	);
 
+	// 상투어 판정용 빈도. 여러 이슈가 동시에 갖고 있는 키워드는 사건을 가리키는 말이 아니다
+	// (COMMON_KEYWORD_ISSUE_COUNT 주석 참고). 이미 로드한 열린 이슈에서 세므로 추가 조회가 없다.
+	const issueDf = new Map<string, number>();
+	const countIssue = (keywords: Iterable<string>) => {
+		for (const k of keywords) issueDf.set(k, (issueDf.get(k) ?? 0) + 1);
+	};
+	for (const c of open) countIssue(c.matchKeywords);
+
 	const assignments: IssueAssignment[] = [];
 	for (const article of ordered) {
 		const kw = toKeywordSet(article.keywords);
 
 		let matched: IssueCandidate | undefined;
 		if (kw.size > 0) {
-			matched = open.find((c) => sharedCount(kw, c.matchKeywords) >= MIN_SHARED_KEYWORDS);
+			matched = open.find((c) => {
+				const shared = sharedKeywords(kw, c.matchKeywords);
+				if (shared.length < MIN_SHARED_KEYWORDS) return false;
+				// 공유한 게 전부 상투어면 잇지 않는다 — 최소 하나는 이 사건만의 말이어야 한다.
+				return shared.some((k) => (issueDf.get(k) ?? 0) < COMMON_KEYWORD_ISSUE_COUNT);
+			});
 		}
 
 		if (matched) {
@@ -98,6 +112,7 @@ export function assignIssues(open: IssueCandidate[], incoming: IncomingArticle[]
 		const frozen = [...kw].slice(0, ISSUE_MATCH_KEYWORD_MAX);
 		const created: IssueCandidate = { id: crypto.randomUUID(), matchKeywords: new Set(frozen) };
 		open.unshift(created);
+		countIssue(frozen);
 		assignments.push({ articleId: article.articleId, issueId: created.id, createdWith: frozen });
 	}
 	return assignments;

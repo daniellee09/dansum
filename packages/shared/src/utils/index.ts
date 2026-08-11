@@ -13,9 +13,10 @@ export type { Grade, LevelProgress } from "./level.js";
 export { normalizeSections } from "./sections.js";
 export {
 	normalizeKeyword,
-	sharedCount,
+	sharedKeywords,
 	toKeywordSet,
 	MIN_SHARED_KEYWORDS,
+	COMMON_KEYWORD_ISSUE_COUNT,
 	ISSUE_MATCH_KEYWORD_MAX,
 	ISSUE_ABSORB_WINDOW_HOURS,
 } from "./cluster.js";
