@@ -124,6 +124,48 @@ export async function listDiscussions(
 	return items.slice(0, limit);
 }
 
+export interface MyDiscussion extends DiscussionListItem {
+	/** 내가 연 글인지, 댓글로 참여한 글인지 */
+	role: "author" | "participant";
+}
+
+/**
+ * "내가 진행 중인 토론"(/feed) — 내가 열었거나 댓글을 단 글을 마지막 활동순으로.
+ *
+ * 나이로 자르지 않는다. 조용해졌다고 내가 연 자리가 내 목록에서 사라지면 안 된다 —
+ * 여기서 '진행 중'은 활동량이 아니라 내가 발을 담근 곳이라는 뜻이다.
+ *
+ * 정렬도 discussionScore를 쓰지 않는다. 목록(/discuss)은 "볼 만한 것"을 고르는 자리지만
+ * 이건 내 것을 되찾는 자리라, 인기 가중치가 끼면 방금 답글이 달린 글이 아래로 밀린다.
+ */
+export async function listMyDiscussions(
+	db: D1Database,
+	userId: string,
+	limit = 4,
+): Promise<MyDiscussion[]> {
+	const { results } = await db
+		.prepare(
+			`${SELECT_BASE}
+			 WHERE d.status = 'active' AND d.hidden_at IS NULL
+			   AND (d.user_id = ?1 OR EXISTS (
+			     SELECT 1 FROM comments c
+			      WHERE c.discussion_id = d.id AND c.user_id = ?1 AND c.status = 'active'
+			   ))
+			 ORDER BY d.created_at DESC LIMIT 50`,
+		)
+		.bind(userId)
+		.all<Row>();
+
+	// last_at은 댓글이 없으면 created_at으로 떨어지므로(toListItem) 방금 연 글도 맨 위에 선다.
+	return results
+		.map((r) => ({
+			...toListItem(r),
+			role: (r.user_id === userId ? "author" : "participant") as MyDiscussion["role"],
+		}))
+		.sort((a, b) => b.lastAt.localeCompare(a.lastAt))
+		.slice(0, limit);
+}
+
 export async function getDiscussion(
 	db: D1Database,
 	id: string,

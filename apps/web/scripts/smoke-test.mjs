@@ -106,6 +106,23 @@ try {
 	);
 	check("/feed shows articles from the followed source", (await page.locator("#feed-list article").count()) > 0);
 
+	// 팔로우 칩: "이 피드가 무엇으로 만들어졌는지"를 보여주는 줄. 비로그인이라 목록 자체는
+	// localStorage에서 오지만 매체 '이름'은 서버가 심어준 맵에서 온다 — id가 그대로 보이면 실패.
+	const feedChip = page.locator(`#feed-follow-chips a[href="${sourceHref}"]`);
+	check("/feed lists the followed source as a chip", (await feedChip.count()) === 1);
+	const chipText = (await feedChip.first().innerText().catch(() => "")).trim();
+	check(
+		"follow chip shows the source name, not its raw id",
+		chipText.length > 0 && chipText !== sourceHref?.replace("/source/", ""),
+		chipText,
+	);
+	// 진행 중인 토론은 계정이 있어야 뜻이 있다. 비로그인에서는 아예 렌더되지 않아야 한다
+	// (사이드바의 /discuss 링크는 슬래시가 더 붙지 않아 이 셀렉터에 걸리지 않는다).
+	check(
+		"logged-out /feed shows no discussion block",
+		(await page.locator('a[href^="/discuss/"]').count()) === 0,
+	);
+
 	// 댓글(공론화 장): 비로그인으로 확인 가능한 것만 본다. 작성/추천/신고는 계정이 필요해
 	// 여기선 다루지 않는다(시드에 계정이 없는 환경에서도 스위트가 돌아야 하므로).
 	const articleHref = await page

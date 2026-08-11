@@ -112,6 +112,23 @@ export async function getSource(
 		.first<{ id: string; name: string; url: string }>();
 }
 
+/**
+ * 매체 id → 이름 전체 맵.
+ *
+ * /feed는 팔로우 목록을 클라이언트에서 읽는다(비로그인은 localStorage에만 있다).
+ * 그쪽에 이름을 알려주려고 매번 조회하는 대신 표 전체를 한 번 내려보낸다 —
+ * 매체는 열 곳 남짓이라 ids를 골라 받는 것보다 이게 싸고, 로그인 여부에 따라
+ * 칩을 그리는 경로가 둘로 갈리지 않는다.
+ */
+export async function listSourceNames(db: D1Database): Promise<Record<string, string>> {
+	const { results } = await db
+		.prepare("SELECT id, name FROM sources")
+		.all<{ id: string; name: string }>();
+	const map: Record<string, string> = {};
+	for (const r of results) map[r.id] = r.name;
+	return map;
+}
+
 export async function getSourceNames(
 	db: D1Database,
 	ids: string[],

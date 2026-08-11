@@ -1,30 +1,127 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { formatRelativeTime } from "@dansum/shared";
+import { listSourceNames } from "../lib/server/db";
+import { listMyDiscussions } from "../lib/server/discussions";
+
+const user = Astro.locals.user;
+const db = Astro.locals.runtime.env.DB;
+
+// 매체 이름표는 로그인 여부와 상관없이 내려보낸다 — 팔로우 목록 자체는 클라이언트가 읽고,
+// 비로그인이면 localStorage에만 있어서 서버는 무엇을 팔로우했는지 알 수 없다.
+const [sourceNames, myDiscussions] = await Promise.all([
+	listSourceNames(db),
+	user ? listMyDiscussions(db, user.id) : Promise.resolve([]),
+]);
+
+// </script>로 빠져나가는 걸 막는다. 매체명은 우리 설정에서 오지만 JSON을 script 안에 심는
+// 자리에서는 출처와 무관하게 막아두는 게 규칙이다.
+const sourceNamesJson = JSON.stringify(sourceNames).replace(/</g, "\\u003c");
 ---
 
-<!-- 계정이 없어 팔로우 목록이 localStorage에만 있으므로 클라이언트에서 그린다 -->
 <BaseLayout title="내 피드 - 단숨" description="팔로우한 매체·카테고리의 최신 기사">
 	<section>
 		<h2 class="text-lg font-bold mb-3">내 피드</h2>
 
-		<p id="feed-empty-follow" class="hidden py-20 text-center text-text-secondary">
+		<!-- 팔로우 목록: 기사보다 먼저, "이 피드가 무엇으로 만들어졌는지"를 한 줄로 보여준다.
+		     팔로우가 하나도 없으면 숨긴 채로 둔다(빈 상자를 두면 안내문과 두 번 말하게 된다). -->
+		<div id="feed-follows" class="hidden mb-6">
+			<div class="mb-2 flex items-baseline justify-between gap-3">
+				<h3 class="text-sm font-bold text-text-secondary">팔로우 중</h3>
+				{user && (
+					<a href="/mypage" class="text-xs text-text-secondary hover:text-brand transition-colors">
+						관리
+					</a>
+				)}
+			</div>
+			<div id="feed-follow-chips" class="flex flex-wrap gap-2"></div>
+		</div>
+
+		{myDiscussions.length > 0 && (
+			<div class="mb-6">
+				<div class="mb-2 flex items-baseline justify-between gap-3">
+					<h3 class="text-sm font-bold text-text-secondary">진행 중인 토론</h3>
+					<a href="/discuss" class="text-xs text-text-secondary hover:text-brand transition-colors">
+						토론 전체보기
+					</a>
+				</div>
+				{/* 목록(/discuss)의 DiscussionCard를 쓰지 않는다 — 저기 붙은 글쓴이 아바타·닉네임이
+				    내 피드에서는 전부 나거나 이미 아는 사람이라 정보가 되지 않는다. */}
+				<ul class="divide-y divide-border rounded-lg border border-border">
+					{myDiscussions.map((d) => (
+						<li>
+							<a href={`/discuss/${d.id}`} class="group block px-4 py-3">
+								<span class="block truncate text-sm font-semibold text-text transition-colors group-hover:text-brand">
+									{d.title}
+								</span>
+								<span class="mt-0.5 block text-xs text-text-secondary tabular-nums">
+									{d.role === "author" ? "내가 연 토론" : "참여 중"}
+									{d.comments > 0
+										? ` · 댓글 ${d.comments} · ${formatRelativeTime(d.lastAt)}`
+										: " · 아직 댓글이 없어요"}
+								</span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</div>
+		)}
+
+		<p id="feed-empty-follow" class="hidden py-16 text-center text-text-secondary">
 			아직 팔로우한 매체나 카테고리가 없습니다. 매체·카테고리 페이지에서 팔로우 버튼을 눌러보세요.
 		</p>
-		<p id="feed-empty-results" class="hidden py-20 text-center text-text-secondary">
+		<p id="feed-empty-results" class="hidden py-16 text-center text-text-secondary">
 			팔로우한 곳에 아직 새 기사가 없습니다.
 		</p>
 
-		<div id="feed-list" class="-mx-4 px-4 divide-y divide-border border-t border-border"></div>
+		{/* 비어 있으면 숨긴다 — border-t만 남아 안내문 아래에 이유 없는 가로줄이 그어진다 */}
+		<div id="feed-list" class="hidden -mx-4 px-4 divide-y divide-border border-t border-border"></div>
 	</section>
+
+	<script id="feed-source-names" type="application/json" is:inline set:html={sourceNamesJson}></script>
 </BaseLayout>
 
 <script>
-	import type { Article } from "@dansum/shared";
+	import type { Article, Category } from "@dansum/shared";
+	import { CATEGORY_LABELS } from "@dansum/shared";
 	import { getFollowedSources, getFollowedCategories } from "../lib/follows";
 	import { getArticles } from "../lib/api";
 	import { renderArticleCard } from "../lib/renderArticleCard";
 	import { setupBookmarkButtons } from "../lib/bookmarks";
 	import { setupCommentCounts } from "../lib/commentCounts";
+
+	function chip(href: string, label: string): HTMLAnchorElement {
+		const a = document.createElement("a");
+		a.href = href;
+		a.className =
+			"inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-sm text-text transition-colors hover:border-brand hover:text-brand";
+		a.textContent = label;
+		return a;
+	}
+
+	/** 팔로우 칩. 매체 이름은 서버가 심어둔 id→이름 맵에서 찾는다(lib/server/db.ts 참고). */
+	function renderFollowChips(sources: string[], categories: string[]): void {
+		const box = document.getElementById("feed-follows");
+		const list = document.getElementById("feed-follow-chips");
+		if (!box || !list) return;
+
+		list.replaceChildren();
+		box.classList.add("hidden");
+		if (sources.length === 0 && categories.length === 0) return;
+
+		let names: Record<string, string> = {};
+		try {
+			names = JSON.parse(document.getElementById("feed-source-names")?.textContent ?? "{}");
+		} catch {
+			// 이름을 못 찾으면 id를 그대로 쓴다. 칩이 사라지는 것보다는 낫다.
+		}
+
+		list.replaceChildren(
+			...sources.map((id) => chip(`/source/${id}`, names[id] ?? id)),
+			...categories.map((c) => chip(`/category/${c}`, CATEGORY_LABELS[c as Category] ?? c)),
+		);
+		box.classList.remove("hidden");
+	}
 
 	async function loadFeed() {
 		const list = document.getElementById("feed-list");
@@ -33,10 +130,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 		if (!list) return;
 
 		list.innerHTML = "";
+		list.classList.add("hidden");
 		emptyFollow?.classList.add("hidden");
 		emptyResults?.classList.add("hidden");
 
 		const [sources, categories] = await Promise.all([getFollowedSources(), getFollowedCategories()]);
+		renderFollowChips(sources, categories);
 
 		if (sources.length === 0 && categories.length === 0) {
 			emptyFollow?.classList.remove("hidden");
@@ -65,6 +164,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 		}
 
 		for (const a of merged) list.appendChild(renderArticleCard(a));
+		list.classList.remove("hidden");
 		setupBookmarkButtons(list);
 		setupCommentCounts(list);
 	}
