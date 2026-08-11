@@ -26,10 +26,15 @@ interface Env {
 }
 
 // 무료 플랜 subrequest 한도(호출당 50개) 안에서 동작하도록 배치 제한:
-//   수집(10) + 추출(FETCH_BATCH) + 요약(SUMMARIZE_BATCH) <= ~50
+//   수집(10) + 추출(FETCH_BATCH) + 요약(SUMMARIZE_BATCH) + D1/KV 호출 <= 50
 // 경량 추출이라 CPU는 여유롭고, 요약(OpenAI 순차 호출)의 wall-clock이 주 제약.
-const FETCH_BATCH = 12;
-const SUMMARIZE_BATCH = 12;
+//
+// 12/12로 두면 한도를 넘는다. 실제로 넘겼고(2026-08-11 배포 직후) 요약 12건 중 6건이
+// "Too many subrequests"로 실패했다 — 실패는 retry_count를 올리므로 세 번 반복되면 기사가
+// 영영 'failed'로 떨어진다. 여유를 남기는 쪽이 처리량보다 우선이다.
+// 늘리기 전에는 반드시 `wrangler tail`로 subrequest 오류가 없는지 확인할 것.
+const FETCH_BATCH = 10;
+const SUMMARIZE_BATCH = 10;
 // 발행 N일이 지나도록 처리되지 못한 pending은 신선도상 가치가 없어 'skipped'로 정리한다.
 // (삭제하지 않는 이유: url_hash 행이 남아야 재수집 churn을 막음)
 const STALE_PENDING_DAYS = 2;
@@ -41,10 +46,20 @@ export default {
 
 	// 수동 트리거용(배포 후 즉시 1회 돌려보거나, 외부 cron 대체용)
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const { pathname } = new URL(request.url);
+		const { pathname, searchParams } = new URL(request.url);
 		if (pathname === "/trigger") {
 			ctx.waitUntil(runPipeline(env));
 			return Response.json({ status: "pipeline started" });
+		}
+		// 이슈 배정만 따로 돌린다. cron의 드레인은 tick당 DRAIN_BATCH건이라 이미 쌓인
+		// 기사 수만 건을 메우는 데 며칠이 걸린다. 이 경로는 수집·요약을 건드리지 않아
+		// 호출당 서브리퀘스트가 2개뿐이라 연달아 부를 수 있다.
+		// 규칙은 cron과 같은 assignIssues를 쓴다 — 백필용 별도 구현을 만들지 않기 위해서다.
+		if (pathname === "/drain") {
+			const n = Math.min(Number(searchParams.get("n") ?? "100") || 100, 200);
+			const openIssues = await loadOpenIssues(env.DB);
+			const assigned = await drainUnassignedIssues(env.DB, openIssues, n);
+			return Response.json({ assigned });
 		}
 		return new Response("Dansum Pipeline Worker", { status: 200 });
 	},

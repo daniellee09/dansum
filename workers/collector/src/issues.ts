@@ -145,7 +145,9 @@ export function buildIssueRecomputeStatements(
 	);
 }
 
-/** 한 tick에 배정을 시도할 미배정 기사 수. 최신분부터 처리해 홈에 뜰 것들을 먼저 채운다. */
+/** cron 한 tick에 배정을 시도할 미배정 기사 수. 최신분부터 처리해 홈에 뜰 것들을 먼저 채운다.
+ *  이미 쌓인 기사를 한꺼번에 메울 때는 이 값이 아니라 /drain?n= 엔드포인트를 쓴다
+ *  (cron 경로는 수집·요약과 서브리퀘스트 예산을 나눠 쓰므로 크게 잡을 수 없다). */
 const DRAIN_BATCH = 50;
 
 /**
@@ -159,13 +161,14 @@ const DRAIN_BATCH = 50;
 export async function drainUnassignedIssues(
 	db: D1Database,
 	open: IssueCandidate[],
+	batch = DRAIN_BATCH,
 ): Promise<number> {
 	const { results } = await db
 		.prepare(
 			`SELECT id, keywords, published_at FROM articles
 			 WHERE issue_id IS NULL ORDER BY published_at DESC LIMIT ?`,
 		)
-		.bind(DRAIN_BATCH)
+		.bind(batch)
 		.all<{ id: string; keywords: string; published_at: string | null }>();
 	if (results.length === 0) return 0;
 
